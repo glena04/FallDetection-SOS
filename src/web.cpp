@@ -1,5 +1,5 @@
 // web.cpp – Weboberfläche: Seiten, Formulare, Schutz (Host/Origin, Limits)
-// Fall Detection & SOS Device – Firmware v7.5 (PlatformIO)
+// Fall Detection & SOS Device – Firmware v7.5.1 (PlatformIO)
 #include "web.h"
 #include <WiFi.h>
 #include <AsyncTCP.h>
@@ -126,9 +126,10 @@ static void handleGetLocation(AsyncWebServerRequest* request) {
   String lat, lon, src; int acc = 0;
   int q = getBestLocation(lat, lon, src, acc);
 
-  String gpsState;
+  String gpsState, netState;
   if (xSemaphoreTake(stateMutex, pdMS_TO_TICKS(200)) == pdTRUE) {
     gpsState = latitude + " " + longitude;
+    netState = modemNetStatus;
     xSemaphoreGive(stateMutex);
   }
 
@@ -141,6 +142,7 @@ static void handleGetLocation(AsyncWebServerRequest* request) {
   } else {
     text = gpsState;
   }
+  text += "<br><small>" + netState + "</small>";
   request->send(200, "text/plain; charset=utf-8", text);
 }
 

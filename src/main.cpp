@@ -1,5 +1,5 @@
 // main.cpp – Start: Hardware, Tasks, WLAN, Webserver
-// Fall Detection & SOS Device – Firmware v7.5 (PlatformIO)
+// Fall Detection & SOS Device – Firmware v7.5.1 (PlatformIO)
 #include <Arduino.h>
 #include <Wire.h>
 #include <esp_task_wdt.h>
@@ -29,7 +29,7 @@ void setup() {
   delay(500);
 
   Serial.println();
-  Serial.println("ESP32 startet... (Firmware v7.5)");
+  Serial.println("ESP32 startet... (Firmware v7.5.1)");
 
   // Synchronisation
   stateMutex   = xSemaphoreCreateMutex();
@@ -68,7 +68,30 @@ void setup() {
   webBegin();
 }
 
+// v7.5.1: AT-Befehle im Serial Monitor eintippen -> werden ans A9G gesendet (Diagnose)
+static void serialAtConsole() {
+  static String line;
+  while (Serial.available()) {
+    char c = (char)Serial.read();
+    if (c == '\r' || c == '\n') {
+      line.trim();
+      if (line.length()) {
+        if (line.length() >= 2 && line.substring(0, 2).equalsIgnoreCase("AT")) {
+          Serial.println(">> " + line);
+          Serial.println(sendATCommand(line, 3000));
+        } else {
+          Serial.println("Nur AT-Befehle, z. B. AT+CREG? oder AT+CSQ");
+        }
+      }
+      line = "";
+    } else if (line.length() < 120) {
+      line += c;
+    }
+  }
+}
+
 void loop() {
+  serialAtConsole();
   if (restartPending && millis() - restartTimer > 2000) {
     Serial.println("Neustart...");
     delay(100);

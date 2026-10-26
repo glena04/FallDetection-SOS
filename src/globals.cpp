@@ -1,5 +1,5 @@
 // globals.cpp – Definition des gemeinsamen Zustands + Status-Helfer
-// Fall Detection & SOS Device – Firmware v7.5 (PlatformIO)
+// Fall Detection & SOS Device – Firmware v7.5.1 (PlatformIO)
 #include "globals.h"
 
 SemaphoreHandle_t stateMutex   = nullptr;
@@ -37,6 +37,7 @@ volatile bool     gprsReady           = false;
 volatile bool     locRefreshRequested = false;
 volatile int      alarmLocQuality     = -1;
 volatile uint32_t alarmTime           = 0;
+String            modemNetStatus      = "Mobilfunk: unbekannt";
 
 void loadConfig() {
   prefs.begin("sosconfig", false);

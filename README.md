@@ -337,7 +337,7 @@ The firmware always uses the **best location currently available**:
 | Adafruit MPU6050 / Unified Sensor / BusIO | Sensor driver |
 | ESPAsyncWebServer + AsyncTCP (ESP32Async) | Web server |
 
-> The project uses the **pioarduino** platform (Arduino-ESP32 core 3.x). The code also builds with core 2.x.
+> Board: **ESP32-S3 N16R8** (16 MB flash, 8 MB PSRAM). For another variant, adjust the flash/PSRAM lines in `platformio.ini`. The code builds with Arduino-ESP32 core 2.x and 3.x.
 
 ### 3. Get the code
 

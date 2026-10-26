@@ -1,5 +1,5 @@
 // location.cpp – GPS, AGPS, WLAN-/Funkzellen-Ortung, GPS-Nachmeldung
-// Fall Detection & SOS Device – Firmware v7.5 (PlatformIO)
+// Fall Detection & SOS Device – Firmware v7.5.1 (PlatformIO)
 #include "location.h"
 #include <WiFi.h>
 #include <HTTPClient.h>
@@ -120,16 +120,32 @@ static void checkFollowUp() {
 }
 
 // 1) WLAN-Ortung: umliegende WLANs scannen und an Geolocation-API senden
-static bool wifiLocate(String& lat, String& lon, int& acc) {
-  if (!USE_WIFI_LOCATION || apMode || WiFi.status() != WL_CONNECTED) return false;
-
-  // v7.4: asynchroner Scan - andere Tasks laufen währenddessen weiter
+// v7.5.1: WLAN-Scan - zuerst asynchron, bei Problemen synchron
+static int scanNearbyWifi() {
+  WiFi.scanDelete();
   int n = WiFi.scanNetworks(true, true);
   uint32_t t0 = millis();
   while ((n = WiFi.scanComplete()) == WIFI_SCAN_RUNNING && millis() - t0 < 10000) {
     vTaskDelay(pdMS_TO_TICKS(100));
   }
-  if (n < 2) { WiFi.scanDelete(); return false; }
+  if (n < 0) {
+    Serial.printf("WLAN-Scan (asynchron) fehlgeschlagen (%d) - versuche synchron.\n", n);
+    WiFi.scanDelete();
+    n = WiFi.scanNetworks(false, true);
+  }
+  return n;
+}
+
+static bool wifiLocate(String& lat, String& lon, int& acc) {
+  if (!USE_WIFI_LOCATION) return false;
+  if (apMode || WiFi.status() != WL_CONNECTED) {
+    Serial.println("WLAN-Ortung: kein WLAN mit Internet verbunden.");
+    return false;
+  }
+
+  int n = scanNearbyWifi();
+  Serial.printf("WLAN-Ortung: %d Netze gefunden.\n", n);
+  if (n < 2) { WiFi.scanDelete(); Serial.println("WLAN-Ortung: zu wenige Netze (mind. 2)."); return false; }
 
   String body = "{\"considerIp\":false,\"wifiAccessPoints\":[";
   int used = 0;
@@ -141,7 +157,8 @@ static bool wifiLocate(String& lat, String& lon, int& acc) {
   }
   body += "]}";
   WiFi.scanDelete();
-  if (used < 2) return false;
+  if (used < 2) { Serial.println("WLAN-Ortung: zu wenige verwendbare Netze."); return false; }
+  Serial.printf("WLAN-Ortung: sende %d Netze an %s\n", used, GEO_API_URL);
 
   WiFiClientSecure client;
   // v7.4 Stufe 3: Zertifikat des Servers prüfen -> keine gefälschten Standorte (Man-in-the-Middle)
@@ -156,6 +173,10 @@ static bool wifiLocate(String& lat, String& lon, int& acc) {
   String resp = http.getString();
   http.end();
 
+  if (code == 404) {
+    Serial.println("WLAN-Ortung: Standort unbekannt (HTTP 404) - die Netze sind nicht in der Datenbank.");
+    return false;
+  }
   if (code != 200) {
     Serial.printf("WLAN-Ortung fehlgeschlagen: HTTP %d %s\n", code, resp.c_str());
     if (code < 0) {                       // Verbindungs-/TLS-Fehler genauer anzeigen
@@ -200,10 +221,45 @@ static void updateFallbackLocation(bool modemAlive) {
   }
 }
 
+// v7.5.1: Netzstatus des A9G lesen (Registrierung + Signal) und anzeigen
+static void updateNetworkStatus() {
+  String reg = sendATCommand("AT+CREG?", 800);
+  String csq = sendATCommand("AT+CSQ", 800);
+
+  int stat = -1, rssi = -1;
+  int i = reg.indexOf("+CREG:");
+  if (i != -1) {
+    int c = reg.indexOf(',', i);
+    if (c != -1) stat = reg.substring(c + 1).toInt();
+  }
+  i = csq.indexOf("+CSQ:");
+  if (i != -1) rssi = csq.substring(i + 5).toInt();
+
+  String regText;
+  switch (stat) {
+    case 1:  regText = "im Netz (Heimnetz)"; break;
+    case 5:  regText = "im Netz (Roaming)"; break;
+    case 2:  regText = "NICHT im Netz - sucht Netz..."; break;
+    case 3:  regText = "NICHT im Netz - Anmeldung abgelehnt (SIM/2G?)"; break;
+    case 0:  regText = "NICHT im Netz - sucht nicht"; break;
+    default: regText = "Status unbekannt"; break;
+  }
+  String sig = (rssi < 0 || rssi == 99) ? "kein Signal" : String(rssi) + "/31";
+  String text = "Mobilfunk: " + regText + ", Signal " + sig;
+
+  static String lastText;
+  if (text != lastText) { Serial.println("A9G " + text); lastText = text; }
+  if (xSemaphoreTake(stateMutex, pdMS_TO_TICKS(200)) == pdTRUE) {
+    modemNetStatus = text;
+    xSemaphoreGive(stateMutex);
+  }
+}
+
 void gpsTask(void* pv) {
   vTaskDelay(pdMS_TO_TICKS(3000));   // let WiFi settle first
   uint32_t lastFallback = 0;
   bool     fallbackTried = false;
+  bool     wifiWasConnected = false;
 
   for (;;) {
     // A9G erreichbar?
@@ -218,6 +274,19 @@ void gpsTask(void* pv) {
       modemOnline = false;
       gprsReady   = false;
     }
+
+    // v7.5.1: Mobilfunk-Status
+    if (alive) {
+      updateNetworkStatus();
+    } else if (xSemaphoreTake(stateMutex, pdMS_TO_TICKS(200)) == pdTRUE) {
+      modemNetStatus = "Mobilfunk: A9G nicht erreichbar";
+      xSemaphoreGive(stateMutex);
+    }
+
+    // v7.5.1: sobald das WLAN (neu) verbunden ist, Ersatz-Standort sofort versuchen
+    bool wifiNow = !apMode && WiFi.status() == WL_CONNECTED;
+    if (wifiNow && !wifiWasConnected) locRefreshRequested = true;
+    wifiWasConnected = wifiNow;
 
     // 1) GPS
     if (alive) {

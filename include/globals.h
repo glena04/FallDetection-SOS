@@ -1,5 +1,5 @@
 // globals.h – gemeinsamer Zustand aller Tasks
-// Fall Detection & SOS Device – Firmware v7.5 (PlatformIO)
+// Fall Detection & SOS Device – Firmware v7.5.1 (PlatformIO)
 #pragma once
 #include <Arduino.h>
 #include <Preferences.h>
@@ -58,6 +58,7 @@ extern volatile bool     gprsReady;
 extern volatile bool     locRefreshRequested;
 extern volatile int      alarmLocQuality;   // -1 = keine offene Nachmeldung, 0 = kein, 1 = Zelle, 2 = WLAN
 extern volatile uint32_t alarmTime;
+extern String            modemNetStatus;    // v7.5.1: Mobilfunk-Status für Webseite (stateMutex)
 
 // ---- Helfer ----
 void   loadConfig();

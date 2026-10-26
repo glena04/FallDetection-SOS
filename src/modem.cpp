@@ -1,5 +1,5 @@
 // modem.cpp – A9G: AT-Befehle, Modem-Meldungen (URC), SMS-Versand mit Wiederholung
-// Fall Detection & SOS Device – Firmware v7.5 (PlatformIO)
+// Fall Detection & SOS Device – Firmware v7.5.1 (PlatformIO)
 #include "modem.h"
 #include "sms_queue.h"
 
@@ -99,7 +99,9 @@ void modemInit() {
 static bool modemReadyForSms() {
   if (sendATCommand("AT", 500).indexOf("OK") == -1) return false;
   String r = sendATCommand("AT+CREG?", 800);           // +CREG: x,1 oder x,5 = angemeldet
-  return r.indexOf(",1") != -1 || r.indexOf(",5") != -1;
+  bool ok = r.indexOf(",1") != -1 || r.indexOf(",5") != -1;
+  if (!ok) Serial.println("A9G nicht im Netz: " + r);
+  return ok;
 }
 
 // v7.2: Ein Sendeversuch. true = erfolgreich, sonst Fehlertext in err

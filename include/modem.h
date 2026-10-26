@@ -1,5 +1,5 @@
 // modem.h – A9G: AT-Befehle, Modem-Meldungen, SMS-Versand
-// Fall Detection & SOS Device – Firmware v7.5 (PlatformIO)
+// Fall Detection & SOS Device – Firmware v7.5.1 (PlatformIO)
 #pragma once
 #include <Arduino.h>
 #include "globals.h"

@@ -1,5 +1,5 @@
 // util.cpp – Text-Helfer
-// Fall Detection & SOS Device – Firmware v7.5 (PlatformIO)
+// Fall Detection & SOS Device – Firmware v7.5.1 (PlatformIO)
 #include "util.h"
 
 String htmlEscape(const String& s) {
