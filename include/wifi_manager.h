@@ -1,5 +1,5 @@
 // wifi_manager.h – WLAN-Verbindung und Setup-Access-Point
-// Fall Detection & SOS Device – Firmware v7.5.1 (PlatformIO)
+// Fall Detection & SOS Device – Firmware v7.5.2 (PlatformIO)
 #pragma once
 
 void wifiBegin();   // verbinden, sonst Setup-AP starten

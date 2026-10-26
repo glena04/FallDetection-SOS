@@ -1,5 +1,5 @@
 // location.cpp – GPS, AGPS, WLAN-/Funkzellen-Ortung, GPS-Nachmeldung
-// Fall Detection & SOS Device – Firmware v7.5.1 (PlatformIO)
+// Fall Detection & SOS Device – Firmware v7.5.2 (PlatformIO)
 #include "location.h"
 #include <WiFi.h>
 #include <HTTPClient.h>
@@ -120,20 +120,19 @@ static void checkFollowUp() {
 }
 
 // 1) WLAN-Ortung: umliegende WLANs scannen und an Geolocation-API senden
-// v7.5.1: WLAN-Scan - zuerst asynchron, bei Problemen synchron
+static bool wifiScanFailed = false;   // v7.5.2: Scan fehlgeschlagen -> bald erneut versuchen
+
+// v7.5.2: WLAN-Scan mit bis zu 3 Versuchen. Kurz nach dem Verbinden lehnt der
+// WLAN-Treiber Scans manchmal ab - dann kurz warten und erneut versuchen.
 static int scanNearbyWifi() {
-  WiFi.scanDelete();
-  int n = WiFi.scanNetworks(true, true);
-  uint32_t t0 = millis();
-  while ((n = WiFi.scanComplete()) == WIFI_SCAN_RUNNING && millis() - t0 < 10000) {
-    vTaskDelay(pdMS_TO_TICKS(100));
-  }
-  if (n < 0) {
-    Serial.printf("WLAN-Scan (asynchron) fehlgeschlagen (%d) - versuche synchron.\n", n);
+  for (int attempt = 1; attempt <= 3; attempt++) {
     WiFi.scanDelete();
-    n = WiFi.scanNetworks(false, true);
+    int n = WiFi.scanNetworks(false, true);   // synchron (blockiert nur diesen Task)
+    if (n > 0) return n;
+    Serial.printf("WLAN-Scan Versuch %d: Ergebnis %d (WLAN-Status %d)\n", attempt, n, (int)WiFi.status());
+    vTaskDelay(pdMS_TO_TICKS(2000));
   }
-  return n;
+  return 0;
 }
 
 static bool wifiLocate(String& lat, String& lon, int& acc) {
@@ -145,6 +144,7 @@ static bool wifiLocate(String& lat, String& lon, int& acc) {
 
   int n = scanNearbyWifi();
   Serial.printf("WLAN-Ortung: %d Netze gefunden.\n", n);
+  wifiScanFailed = (n <= 0);
   if (n < 2) { WiFi.scanDelete(); Serial.println("WLAN-Ortung: zu wenige Netze (mind. 2)."); return false; }
 
   String body = "{\"considerIp\":false,\"wifiAccessPoints\":[";
@@ -307,7 +307,7 @@ void gpsTask(void* pv) {
     if (fix) {
       locRefreshRequested = false;
     } else if (!fallbackTried || locRefreshRequested ||
-               millis() - lastFallback > FALLBACK_INTERVAL_MS) {
+               millis() - lastFallback > (wifiScanFailed ? 30000UL : FALLBACK_INTERVAL_MS)) {
       locRefreshRequested = false;
       fallbackTried = true;
       lastFallback  = millis();

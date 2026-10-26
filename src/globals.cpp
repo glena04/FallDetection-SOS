@@ -1,5 +1,5 @@
 // globals.cpp – Definition des gemeinsamen Zustands + Status-Helfer
-// Fall Detection & SOS Device – Firmware v7.5.1 (PlatformIO)
+// Fall Detection & SOS Device – Firmware v7.5.2 (PlatformIO)
 #include "globals.h"
 
 SemaphoreHandle_t stateMutex   = nullptr;

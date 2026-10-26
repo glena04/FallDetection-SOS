@@ -1,5 +1,5 @@
 // secrets.example.h – Vorlage. Kopieren nach include/secrets.h und ausfüllen
-// Fall Detection & SOS Device – Firmware v7.5.1 (PlatformIO)
+// Fall Detection & SOS Device – Firmware v7.5.2 (PlatformIO)
 #pragma once
 // include/secrets.h steht in .gitignore und wird nie hochgeladen.
 // Ohne secrets.h startet das Gerät im Setup-WLAN "ESP32-SOS-Setup".

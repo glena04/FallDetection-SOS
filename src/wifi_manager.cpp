@@ -1,5 +1,5 @@
 // wifi_manager.cpp – WLAN-Verbindung, Setup-AP, automatische Neuverbindung
-// Fall Detection & SOS Device – Firmware v7.5.1 (PlatformIO)
+// Fall Detection & SOS Device – Firmware v7.5.2 (PlatformIO)
 #include "wifi_manager.h"
 #include <WiFi.h>
 #include "globals.h"

@@ -1,5 +1,5 @@
 // sms_queue.cpp – SMS werden vor dem Senden im Flash gespeichert
-// Fall Detection & SOS Device – Firmware v7.5.1 (PlatformIO)
+// Fall Detection & SOS Device – Firmware v7.5.2 (PlatformIO)
 #include "sms_queue.h"
 #include "globals.h"
 #include "util.h"

@@ -1,5 +1,5 @@
 // sos.h – SOS-Taster und Notruf-SMS
-// Fall Detection & SOS Device – Firmware v7.5.1 (PlatformIO)
+// Fall Detection & SOS Device – Firmware v7.5.2 (PlatformIO)
 #pragma once
 #include <Arduino.h>
 
