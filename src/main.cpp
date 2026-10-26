@@ -16,7 +16,7 @@
 // Platzhalter! Eigene Daten eintragen (oder später über die Webseite speichern).
 // Echte Passwörter nie auf GitHub hochladen.
 const char* DEFAULT_SSID = "Vodafone-EBDF";
-const char* DEFAULT_PASS = "TLL86QcUHeeD6EcQ";
+const char* DEFAULT_PASS = "";
 const char* AP_SSID      = "ESP32-SOS-Setup";
 const char* AP_PASS      = "sos12345";   // min. 8 Zeichen
 
