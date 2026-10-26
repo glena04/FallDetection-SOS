@@ -4,9 +4,10 @@ A low-cost **personal emergency device** that detects falls automatically, has a
 
 ![Platform](https://img.shields.io/badge/platform-ESP32--S3-blue)
 ![Framework](https://img.shields.io/badge/framework-Arduino%20%2B%20FreeRTOS-00979D)
+![Build](https://img.shields.io/badge/build-PlatformIO-F5822A)
 ![Modem](https://img.shields.io/badge/modem-Ai--Thinker%20A9G-orange)
 ![Status](https://img.shields.io/badge/status-prototype-yellow)
-![Version](https://img.shields.io/badge/firmware-v7.3-green)
+![Version](https://img.shields.io/badge/firmware-v7.5-green)
 
 > ⚠️ **Prototype – not a certified medical or safety device.** Do not rely on it as the only protection for a person at risk. See [Safety, privacy & legal notice](#%EF%B8%8F-safety-privacy--legal-notice).
 
@@ -69,6 +70,11 @@ The goal of this prototype is to validate the concept before moving to a small p
 | 📡 **Setup access point** | If Wi-Fi fails, the device opens its own Wi-Fi `ESP32-SOS-Setup` for configuration |
 | 🔌 **Modem auto-recovery** | Detects when the A9G is disconnected or restarted and sets it up again automatically |
 | 💾 **Persistent settings** | Phone numbers and Wi-Fi data are kept after a restart (ESP32 Preferences) |
+| 🩺 **Sensor monitoring** | Detects a missing, disconnected or frozen MPU6050, retries every 10 s, warns on the web page and by SMS |
+| 💾 **SMS saved in flash** | Every SMS is stored before sending – an alarm is not lost if the device restarts |
+| 🐕 **Watchdog** | Restarts the device if fall detection or the SOS button task hangs |
+| 🛡️ **Web protection** | POST for all changes, origin/host check (CSRF, DNS rebinding), rate limits, input validation, Wi-Fi password never shown |
+| 🔐 **TLS verification** | The Wi-Fi location server certificate is verified against trusted root CAs |
 | 🧵 **FreeRTOS tasks** | Sensor, location, SMS, call, button and web server run in parallel, protected by mutexes |
 | 🔁 **MPU clone support** | Detects compatible MPU6050 clones (e.g. MPU6500) via the `WHO_AM_I` register |
 
@@ -322,65 +328,71 @@ The firmware always uses the **best location currently available**:
 
 ### 2. Install the software
 
-1. Install the **[Arduino IDE 2.x](https://www.arduino.cc/en/software)**.
-2. Add the ESP32 board package:
-   - *File → Preferences → Additional boards manager URLs:*
-     ```
-     https://espressif.github.io/arduino-esp32/package_esp32_index.json
-     ```
-   - *Tools → Board → Boards Manager* → search **esp32** (by Espressif) → **Install**.
-3. Install the libraries (*Tools → Manage Libraries*):
+1. Install **[Visual Studio Code](https://code.visualstudio.com/)**.
+2. Install the **PlatformIO IDE** extension (Extensions → search "PlatformIO IDE").
+3. Libraries and the ESP32 toolchain are installed **automatically** on the first build (see `platformio.ini`):
 
 | Library | Purpose |
 |---|---|
-| **Adafruit MPU6050** | Sensor driver |
-| **Adafruit Unified Sensor** | Sensor base library |
-| **Adafruit BusIO** | Installed automatically |
-| **ESPAsyncWebServer** (ESP32Async) | Web server |
-| **AsyncTCP** (ESP32Async) | Required by ESPAsyncWebServer |
+| Adafruit MPU6050 / Unified Sensor / BusIO | Sensor driver |
+| ESPAsyncWebServer + AsyncTCP (ESP32Async) | Web server |
 
-`WiFi`, `HTTPClient`, `WiFiClientSecure`, `Preferences`, `Wire` and FreeRTOS are part of the ESP32 core.
+> The project uses the **pioarduino** platform (Arduino-ESP32 core 3.x). The code also builds with core 2.x.
 
 ### 3. Get the code
 
 ```bash
 git clone https://github.com/glena04/<repository-name>.git
-cd <repository-name>
 ```
 
-Open `Web-GPS-GSM/Web-GPS-GSM.ino` in the Arduino IDE.
+In VS Code: **File → Open Folder** → select the project folder (the one with `platformio.ini`).
 
-### 4. Board settings
+### 4. Wi-Fi credentials (optional)
 
-| Setting | Value |
-|---|---|
-| Board | ESP32S3 Dev Module |
-| USB CDC On Boot | Enabled (Serial Monitor over USB) |
-| Upload speed | 921600 |
-| Flash size | according to your board |
+Copy `include/secrets.example.h` to **`include/secrets.h`** and enter your Wi-Fi:
 
-### 5. Upload
+```cpp
+#define WIFI_SSID_DEFAULT "MyWifi"
+#define WIFI_PASS_DEFAULT "MyPassword"
+```
 
-1. Connect the ESP32-S3 by USB and select the port (*Tools → Port*).
-2. Click **Upload**.
-3. Open the **Serial Monitor** at **115200 baud**.
+`secrets.h` is listed in `.gitignore` and is never uploaded to GitHub. Without it, configure Wi-Fi through the setup access point (see [Usage](#-usage)).
+
+### 5. Set the APN
+
+In `include/config.h` set `GPRS_APN` to the APN of your SIM card.
+
+### 6. Build, upload, monitor
+
+| Action | VS Code (PlatformIO toolbar) | Terminal |
+|---|---|---|
+| Build | ✔ Build | `pio run` |
+| Upload | → Upload | `pio run -t upload` |
+| Serial monitor | 🔌 Monitor | `pio device monitor` |
+
+The serial monitor runs at **115200 baud** with an exception decoder (readable crash logs).
+
+> 💡 Saved settings (Wi-Fi, emergency numbers, unsent SMS) are kept in flash and **survive new uploads**. `pio run -t erase` deletes everything.
 
 ---
 
 ## 🔧 Configuration
 
-All settings are at the top of `Web-GPS-GSM.ino`.
+All settings are in **`include/config.h`**. Wi-Fi credentials are in `include/secrets.h` (optional).
 
 ### Wi-Fi & setup access point
 
 ```cpp
-const char* DEFAULT_SSID = "DEIN_WLAN_NAME";      // or set later on the web page
-const char* DEFAULT_PASS = "DEIN_WLAN_PASSWORT";
-const char* AP_SSID      = "ESP32-SOS-Setup";     // setup Wi-Fi if connection fails
-const char* AP_PASS      = "sos12345";
+// include/secrets.h (optional – or set later on the web page)
+#define WIFI_SSID_DEFAULT "DEIN_WLAN_NAME"
+#define WIFI_PASS_DEFAULT "DEIN_WLAN_PASSWORT"
+
+// include/config.h
+const char* const AP_SSID = "ESP32-SOS-Setup";   // setup Wi-Fi if connection fails
+const char* const AP_PASS = "sos12345";
 ```
 
-> 🔐 **Never push real passwords to GitHub.** Keep placeholders in the repository and enter your data on the web page, or use a `secrets.h` listed in `.gitignore`.
+> 🔐 **Never push real passwords to GitHub.** `include/secrets.h` is already in `.gitignore`.
 
 ### Pins
 
@@ -417,6 +429,7 @@ const char* AP_PASS      = "sos12345";
 | `USE_WIFI_LOCATION` | `true` | Wi-Fi location |
 | `USE_CELL_LOCATION` | `true` | Cell tower location |
 | `GEO_API_URL` | beaconDB | Wi-Fi location service (free, experimental). Alternative: Google Geolocation API with key |
+| `GEO_TLS_VERIFY` | `true` | Verify the server certificate (root CAs in `include/root_ca.h`) |
 | `FALLBACK_INTERVAL_MS` | 120000 | Refresh approximate location every 2 min |
 | `FALLBACK_MAX_AGE_MS` | 900000 | Use approximate location for max. 15 min |
 | `FOLLOWUP_MAX_MS` | 7200000 | Send GPS follow-up for up to 2 h |
@@ -427,6 +440,20 @@ const char* AP_PASS      = "sos12345";
 |---|---|---|
 | `LISTEN_IN_ENABLED` | `true` | Answer calls from saved numbers automatically |
 | `MUTE_SPEAKER` | `true` | Caller only listens (`AT+CLVL=0`) |
+
+### Reliability & web protection
+
+| Constant | Default | Meaning |
+|---|---|---|
+| `SENSOR_RETRY_MS` | 10000 | Search for a missing sensor every 10 s |
+| `SENSOR_ALERT_AFTER_MS` | 60000 | SMS warning after 1 min sensor failure |
+| `SENSOR_ALERT_INTERVAL_MS` | 21600000 | Repeat the warning at most every 6 h |
+| `AP_RETRY_MS` | 300000 | In setup mode, try the home Wi-Fi again every 5 min |
+| `WDT_TIMEOUT_S` | 30 | Watchdog timeout |
+| `SMS_SLOTS` | 8 | SMS stored in flash / queue size |
+| `WEB_SOS_MAX` / `WEB_SOS_WINDOW_MS` | 3 / 10 min | Limit for web SOS |
+| `WEB_SMS_MAX` / `WEB_SMS_WINDOW_MS` | 5 / 10 min | Limit for manual SMS |
+| `MANUAL_SMS_MAX_LEN` | 80 | Max. length of a manual SMS text |
 
 ### Fall detection
 
@@ -496,16 +523,23 @@ SMS gesendet an: +49176… (Versuch 4)
 |---|---|---|
 | `/` | GET | Main page |
 | `/getLocation` | GET | Current location (GPS or approximate) |
-| `/getMPU` | GET | Sensor values as JSON |
-| `/getSMSStatus` | GET | Status text (SMS, countdown, calls) |
-| `/sos` | GET | Send SOS to all numbers |
-| `/cancel` | GET | Cancel a running fall countdown |
-| `/hangup` | GET | End the current call |
-| `/sendSMS?number=…&message=…` | GET | Send a manual SMS with location |
-| `/savePhones?p1=…&p2=…&p3=…` | GET | Save emergency numbers |
-| `/saveWifi?ssid=…&pass=…` | GET | Save Wi-Fi data and restart |
+| `/getMPU` | GET | Sensor values + sensor status as JSON |
+| `/getSMSStatus` | GET | Status text (SMS, countdown, calls, sensor) |
+| `/sos` | POST | Send SOS to all numbers (max. 3 per 10 min) |
+| `/cancel` | POST | Cancel a running fall countdown |
+| `/hangup` | POST | End the current call |
+| `/sendSMS` | POST | Manual SMS with location (`number`, `message`; max. 5 per 10 min) |
+| `/savePhones` | POST | Save emergency numbers (`p1`, `p2`, `p3`) |
+| `/saveWifi` | POST | Save Wi-Fi (`ssid`, `pass`, `open`) and restart |
 
-> 🔒 The web interface has **no login** yet. Only use it in a trusted network.
+**Protection (no login yet):**
+- All changes use **POST** and are only accepted from the device's own page (Origin check against CSRF).
+- The device only answers when opened by its **IP address** (protection against DNS rebinding).
+- The page cannot be embedded in other websites (clickjacking).
+- Phone numbers are validated, SMS text is cleaned (no control characters → no AT command injection).
+- The Wi-Fi password is never shown; leave the field empty to keep it.
+
+> 🔒 There is **no login** yet. Only use the device in a trusted network.
 
 ---
 
@@ -556,7 +590,13 @@ Sturzalarm in 15 s - Taster druecken zum Abbrechen
 | Call not answered | Number not saved / caller ID hidden | Save the caller's number; do not hide caller ID |
 | Nothing heard in the call | No microphone connected | Connect an electret mic to A9G MIC_P / MIC_N |
 | Buzzer silent | Passive buzzer / too weak GPIO | Use an **active** buzzer and the NPN transistor |
-| ESP32 crashes / reboots | Stack overflow | `mpuTask` 8192, `gpsTask` 10240 bytes |
+| ESP32 crashes / reboots | Stack overflow / watchdog | Read the decoded crash in the PlatformIO monitor; `mpuTask` 8192, `gpsTask` 10240 bytes |
+| "⚠ Sturzsensor ausgefallen" | MPU6050 disconnected / I²C problem | Check wiring; the device retries every 10 s and reports recovery |
+| `TLS/Verbindung: … verify failed` | Location server uses another CA | Add its root CA to `include/root_ca.h` (or set `GEO_TLS_VERIFY` to `false` for a test) |
+| `Zugriff nur über die IP-Adresse` | Page opened by hostname | Open it by IP, e.g. `http://192.168.1.50` |
+| `Limit erreicht` (HTTP 429) | Web rate limit | Wait 10 min; the SOS button is never limited |
+| Old test SMS sent after flashing | SMS stored in flash | Expected; `pio run -t erase` clears all saved data |
+| `SMS verworfen: ungültige Nummer` | Number saved in an old format | Save the emergency numbers again on the web page |
 
 Useful AT commands for manual checks:
 
@@ -576,32 +616,41 @@ AT+CMGD=1,4     → delete all stored SMS
 
 ## 📁 Project structure
 
-Current (single sketch):
+```
+fall-detection-sos/
+├── platformio.ini          # board, platform, libraries
+├── include/
+│   ├── config.h            # ALL settings: pins, thresholds, timings, APN
+│   ├── secrets.example.h   # template → copy to secrets.h (gitignored)
+│   ├── globals.h           # shared state between tasks
+│   ├── webpage.h           # HTML/CSS/JS of the web interface
+│   ├── root_ca.h           # trusted root certificates (HTTPS)
+│   └── *.h                 # one header per module
+├── src/
+│   ├── main.cpp            # setup(), loop(), task start, watchdog
+│   ├── globals.cpp         # shared state, status text, settings
+│   ├── fall_detection.cpp  # mpuTask: fall detection, 15 s countdown, sensor monitoring
+│   ├── sos.cpp             # buttonTask: SOS button, alarm SMS
+│   ├── sms_queue.cpp       # SMS queue stored in flash
+│   ├── modem.cpp           # A9G: AT commands, URC parser, smsTask with retry
+│   ├── calls.cpp           # callTask: call-back / listen-in
+│   ├── location.cpp        # gpsTask: GPS, AGPS, Wi-Fi & cell location, follow-up
+│   ├── web.cpp             # web server, forms, protection
+│   ├── wifi_manager.cpp    # Wi-Fi, setup access point, reconnect
+│   └── util.cpp            # text helpers (phone check, SMS cleaning, JSON)
+├── docs/images/            # photos, wiring
+├── README.md
+└── LICENSE
+```
 
-```
-Web-GPS-GSM/
-└── Web-GPS-GSM.ino      # firmware v7.3
-docs/
-└── images/              # photos, wiring pictures
-README.md
-LICENSE
-```
-
-Planned modular structure:
-
-```
-Web-GPS-GSM/
-├── Web-GPS-GSM.ino       # setup(), loop(), task creation
-├── config.h              # pins, thresholds, timings
-├── secrets.h             # Wi-Fi password, API key (in .gitignore)
-├── webpage.h             # HTML page
-├── web_handlers.cpp/.h   # HTTP routes
-├── modem.cpp/.h          # A9G: AT commands, URC parser, SMS task
-├── location.cpp/.h       # GPS, AGPS, Wi-Fi & cell location, follow-up
-├── calls.cpp/.h          # call-back / listen-in
-├── fall_detection.cpp/.h # mpuTask, countdown
-└── sos.cpp/.h            # button task, SMS queue helpers
-```
+| Task | Module | Priority | Watchdog |
+|---|---|---|---|
+| `mpuTask` | fall_detection | 1 | ✅ |
+| `buttonTask` | sos | 1 | ✅ |
+| `smsTask` | modem | 2 | – |
+| `callTask` | calls | 2 | – |
+| `gpsTask` | location | 1 | – |
+| Web server | web (AsyncTCP) | – | – |
 
 ---
 
@@ -621,27 +670,39 @@ Web-GPS-GSM/
 | **v7.1** | Noise-proof SOS button (2 s hold, polling instead of interrupt, 60 s lock) – fixed endless SMS loop |
 | **v7.2** | SMS retry queue, modem readiness check, `+CMGS` confirmation, automatic A9G re-setup |
 | **v7.3** | AGPS, Wi-Fi & cell tower location, GPS follow-up SMS, buzzer on GPIO 14 |
+| **v7.4** | Reliability: sensor monitoring + retry, SMS stored in flash, watchdog, AP-mode retry, bounded status text, async Wi-Fi scan. Security: POST, CSRF/host check, rate limits, input validation, modem injection protection, Wi-Fi password hidden. TLS certificate verification |
+| **v7.5** | Moved to **PlatformIO**: split into modules, `config.h`, `secrets.h`, verified build for ESP32-S3 |
 | Product planning | Configuration by SMS / web portal, hosting (VPS + MQTT), cost estimate for a custom PCB |
 
 ---
 
 ## 🗺️ Roadmap
 
-- [x] ESP32 + A9G + MPU6050 prototype
-- [x] Web interface and SOS button
-- [x] Multi-stage fall detection
-- [x] 15 s cancel window with buzzer
+**Done**
+- [x] ESP32 + A9G + MPU6050 prototype, web interface, SOS button
+- [x] Multi-stage fall detection with 15 s cancel window and buzzer
 - [x] Call-back & listen-in
-- [x] SMS retry queue
+- [x] SMS retry queue, stored in flash
 - [x] AGPS, Wi-Fi & cell tower location, GPS follow-up
-- [ ] **v7.4:** Wi-Fi location **outside the home** – scan sent over the A9G to a small relay (`locate.php`) that calls the location service over HTTPS
-- [ ] Audible signal when a call is answered (transparency for the wearer)
+- [x] Sensor monitoring, watchdog, setup-mode recovery
+- [x] Web protection, input validation, TLS verification
+- [x] PlatformIO project with modules
+
+**Next (prototype)**
 - [ ] Login for the web interface
+- [ ] OTA firmware updates (password-protected, with rollback)
 - [ ] Configure phone numbers by **SMS commands** (PIN + sender whitelist)
-- [ ] Low battery warning by SMS
-- [ ] Split firmware into modules / move to PlatformIO
-- [ ] Replace A9G (2G) with **Quectel BG95-M3** (LTE-M / NB-IoT + GNSS)
-- [ ] Replace MPU6050 with **ST LSM6DSOX** (on-chip free-fall & ML core) + LIS3MDL
+- [ ] Audible signal when a listen-in call is answered
+- [ ] Optional weekly self-test SMS
+
+**Battery / product version**
+- [ ] GPS only on demand (switched on during an alarm)
+- [ ] Battery mode: Wi-Fi off when idle, setup Wi-Fi by holding the SOS button for 10 s
+- [ ] Wi-Fi location on demand – scan during an alarm, sent via home Wi-Fi or **A9G/LTE + relay** (`locate.php`) so it also works outside
+- [ ] Battery voltage measurement and low-battery SMS
+- [ ] ESP32 light sleep, wake-up by SOS button and IMU interrupt
+- [ ] Replace A9G (2G) with **Quectel BG95-M3** (LTE-M / NB-IoT + GNSS, PSM/eDRX)
+- [ ] Replace MPU6050 with **ST LSM6DSOX** (on-chip free-fall, wake-up & ML core) + LIS3MDL
 - [ ] Custom **PCB** with ESP32-S3, BG95-M3, GNSS and IMU in a small wearable case
 - [ ] Optional cloud portal (VPS + MQTT) for relatives / care services
 
