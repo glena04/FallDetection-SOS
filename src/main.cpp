@@ -1,5 +1,5 @@
 // main.cpp – Start: Hardware, Tasks, WLAN, Webserver
-// Fall Detection & SOS Device – Firmware v7.5.2 (PlatformIO)
+// Fall Detection & SOS Device – Firmware v7.6 (PlatformIO)
 #include <Arduino.h>
 #include <Wire.h>
 #include <esp_task_wdt.h>
@@ -29,7 +29,7 @@ void setup() {
   delay(500);
 
   Serial.println();
-  Serial.println("ESP32 startet... (Firmware v7.5.2)");
+  Serial.println("ESP32 startet... (Firmware v7.6)");
 
   // Synchronisation
   stateMutex   = xSemaphoreCreateMutex();

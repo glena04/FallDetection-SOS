@@ -7,7 +7,7 @@ A low-cost **personal emergency device** that detects falls automatically, has a
 ![Build](https://img.shields.io/badge/build-PlatformIO-F5822A)
 ![Modem](https://img.shields.io/badge/modem-Ai--Thinker%20A9G-orange)
 ![Status](https://img.shields.io/badge/status-prototype-yellow)
-![Version](https://img.shields.io/badge/firmware-v7.5-green)
+![Version](https://img.shields.io/badge/firmware-v7.6-green)
 
 > ⚠️ **Prototype – not a certified medical or safety device.** Do not rely on it as the only protection for a person at risk. See [Safety, privacy & legal notice](#%EF%B8%8F-safety-privacy--legal-notice).
 
@@ -65,6 +65,7 @@ The goal of this prototype is to validate the concept before moving to a small p
 | 📍 **GPS + AGPS** | AGPS (assisted GPS over mobile data) for a faster first fix, normal GPS as fallback |
 | 📶 **Approximate location** | Without a GPS fix: Wi-Fi location (when the device is on Wi-Fi) or cell tower location via the A9G |
 | 🔁 **Location follow-up** | If the alarm had no GPS position, a second SMS with the exact GPS position is sent automatically as soon as GPS is available |
+| 💬 **SMS commands** | Saved contacts can text `STANDORT` or `STATUS` to the device and get the location or device status back |
 | 🎧 **Call-back & listen-in** | Calls from saved emergency numbers are answered automatically; other callers are rejected |
 | 🌐 **Web interface** | Live location, sensor values, SMS status, phone numbers, Wi-Fi setup, cancel & hang-up buttons |
 | 📡 **Setup access point** | If Wi-Fi fails, the device opens its own Wi-Fi `ESP32-SOS-Setup` for configuration |
@@ -506,6 +507,21 @@ The web status shows `Sturzalarm abgebrochen – kein Notruf gesendet.`
 3. Calls from other numbers are rejected.
 4. End the call on your phone or click **"📴 Laufenden Anruf beenden"** on the web page.
 
+### Asking for the location by SMS
+
+Send an SMS **to the device's SIM number** from one of the saved emergency numbers:
+
+| SMS text | Reply |
+|---|---|
+| `STANDORT` (also `WO`, `LOC`, `LOCATION`, `POSITION`) | Current location with Google Maps link (GPS, or approximate + "GPS wird gesucht") |
+| `STATUS` | Fall sensor, GPS, mobile network/signal, Wi-Fi |
+| anything else | List of possible commands |
+
+- Upper/lower case and punctuation don't matter (`standort?` works).
+- SMS from unknown numbers are ignored.
+- Max. **10 replies per hour** (`SMS_CMD_MAX_PER_HOUR`) to prevent SMS loops.
+- Read SMS are deleted from the SIM automatically, so its memory doesn't fill up.
+
 ### When the A9G has no network
 
 The SMS stays in the queue. The web status shows:
@@ -598,7 +614,7 @@ Sturzalarm in 15 s - Taster druecken zum Abbrechen
 | Old test SMS sent after flashing | SMS stored in flash | Expected; `pio run -t erase` clears all saved data |
 | `SMS verworfen: ungültige Nummer` | Number saved in an old format | Save the emergency numbers again on the web page |
 
-Useful AT commands for manual checks:
+Useful AT commands for manual checks – **type them directly into the serial monitor** (they are forwarded to the A9G):
 
 ```
 AT              → OK (modem responds)
@@ -633,7 +649,8 @@ fall-detection-sos/
 │   ├── sos.cpp             # buttonTask: SOS button, alarm SMS
 │   ├── sms_queue.cpp       # SMS queue stored in flash
 │   ├── modem.cpp           # A9G: AT commands, URC parser, smsTask with retry
-│   ├── calls.cpp           # callTask: call-back / listen-in
+│   ├── calls.cpp           # callTask: call-back / listen-in, incoming SMS
+│   ├── sms_commands.cpp    # SMS commands STANDORT / STATUS
 │   ├── location.cpp        # gpsTask: GPS, AGPS, Wi-Fi & cell location, follow-up
 │   ├── web.cpp             # web server, forms, protection
 │   ├── wifi_manager.cpp    # Wi-Fi, setup access point, reconnect
@@ -672,6 +689,8 @@ fall-detection-sos/
 | **v7.3** | AGPS, Wi-Fi & cell tower location, GPS follow-up SMS, buzzer on GPIO 14 |
 | **v7.4** | Reliability: sensor monitoring + retry, SMS stored in flash, watchdog, AP-mode retry, bounded status text, async Wi-Fi scan. Security: POST, CSRF/host check, rate limits, input validation, modem injection protection, Wi-Fi password hidden. TLS certificate verification |
 | **v7.5** | Moved to **PlatformIO**: split into modules, `config.h`, `secrets.h`, verified build for ESP32-S3 |
+| **v7.5.1–7.5.2** | Diagnostics: mobile network status on web page, AT console in the serial monitor, detailed Wi-Fi location log, robust Wi-Fi scan with retries |
+| **v7.6** | SMS commands `STANDORT` and `STATUS` from saved numbers |
 | Product planning | Configuration by SMS / web portal, hosting (VPS + MQTT), cost estimate for a custom PCB |
 
 ---
@@ -691,6 +710,7 @@ fall-detection-sos/
 **Next (prototype)**
 - [ ] Login for the web interface
 - [ ] OTA firmware updates (password-protected, with rollback)
+- [x] SMS commands `STANDORT` / `STATUS`
 - [ ] Configure phone numbers by **SMS commands** (PIN + sender whitelist)
 - [ ] Audible signal when a listen-in call is answered
 - [ ] Optional weekly self-test SMS

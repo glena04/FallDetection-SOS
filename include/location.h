@@ -1,5 +1,5 @@
 // location.h – GPS, AGPS, WLAN-/Funkzellen-Ortung, GPS-Nachmeldung
-// Fall Detection & SOS Device – Firmware v7.5.2 (PlatformIO)
+// Fall Detection & SOS Device – Firmware v7.6 (PlatformIO)
 #pragma once
 #include <Arduino.h>
 

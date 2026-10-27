@@ -1,5 +1,5 @@
 // config.h – alle Einstellungen (Pins, Schwellen, Zeiten)
-// Fall Detection & SOS Device – Firmware v7.5.2 (PlatformIO)
+// Fall Detection & SOS Device – Firmware v7.6 (PlatformIO)
 #pragma once
 #include <Arduino.h>
 
@@ -48,7 +48,7 @@ const bool MUTE_SPEAKER      = true;  // Lautsprecher stumm -> Anrufer hört nur
 const unsigned long GPS_INTERVAL = 30000;  // 30 Sekunden
 
 // v7.3: AGPS + Ersatz-Standort, solange kein GPS-Fix da ist
-const char* const GPRS_APN          = "web.vodafone.de";  // APN der SIM-Karte (z. B. "internet", "web.vodafone.de", "online.telia.se")
+const char* const GPRS_APN          = "internet";  // APN der SIM-Karte (z. B. "internet", "web.vodafone.de", "online.telia.se")
 const bool  USE_AGPS          = true;        // AGPS: schnellerer GPS-Fix (braucht mobile Daten)
 const bool  USE_WIFI_LOCATION = true;        // 1. Ersatz: WLAN-Ortung (braucht WLAN mit Internet)
 const bool  USE_CELL_LOCATION = true;        // 2. Ersatz: Funkzellen-Ortung über A9G (braucht mobile Daten)
@@ -80,6 +80,7 @@ const int      WEB_SOS_MAX        = 3;        // Web-SOS: max. 3 ...
 const uint32_t WEB_SOS_WINDOW_MS  = 600000;   // ... pro 10 Minuten
 const int      WEB_SMS_MAX        = 5;        // manuelle SMS: max. 5 ...
 const uint32_t WEB_SMS_WINDOW_MS  = 600000;   // ... pro 10 Minuten
+const int      SMS_CMD_MAX_PER_HOUR = 10;     // v7.6: max. Antworten auf SMS-Befehle pro Stunde
 const size_t   MANUAL_SMS_MAX_LEN = 80;       // Länge der eigenen Nachricht (Standort kommt dazu)
 
 // ======================= STURZERKENNUNG =======================

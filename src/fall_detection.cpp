@@ -1,5 +1,5 @@
 // fall_detection.cpp – Sturzerkennung, Abbruch-Countdown, Sensor-Überwachung
-// Fall Detection & SOS Device – Firmware v7.5.2 (PlatformIO)
+// Fall Detection & SOS Device – Firmware v7.6 (PlatformIO)
 #include "fall_detection.h"
 #include <Wire.h>
 #include <Adafruit_MPU6050.h>

@@ -1,5 +1,5 @@
 // modem.cpp – A9G: AT-Befehle, Modem-Meldungen (URC), SMS-Versand mit Wiederholung
-// Fall Detection & SOS Device – Firmware v7.5.2 (PlatformIO)
+// Fall Detection & SOS Device – Firmware v7.6 (PlatformIO)
 #include "modem.h"
 #include "sms_queue.h"
 
@@ -20,6 +20,8 @@ static void handleModemLine(String line) {
       }
       callerPending = true;
     }
+  } else if (line.startsWith("+CMTI:")) {         // v7.6: neue SMS gespeichert
+    smsReceived = true;
   } else if (line == "NO CARRIER" || line == "BUSY" || line == "NO ANSWER") {
     if (callActive) {
       callActive = false;
@@ -83,6 +85,8 @@ void modemInit() {
   sendATCommand("AT+CMGF=1", 1000);                    // SMS-Textmodus
   sendATCommand("AT+CLIP=1", 1000);                    // Anrufernummer anzeigen (+CLIP)
   if (MUTE_SPEAKER) sendATCommand("AT+CLVL=0", 1000);  // Lautsprecher leise (falls unterstützt)
+  sendATCommand("AT+CNMI=2,1,0,0,0", 1000);            // v7.6: neue SMS melden (+CMTI)
+  smsReceived = true;                                  // v7.6: ungelesene SMS beim Start prüfen
 
   // v7.3: AGPS (braucht mobile Daten). Laut Handbuch vorher GPS ausschalten.
   bool agpsOn = false;

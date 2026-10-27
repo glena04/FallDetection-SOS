@@ -1,5 +1,5 @@
 // root_ca.h – Stammzertifikate für die WLAN-Ortung (HTTPS)
-// Fall Detection & SOS Device – Firmware v7.5.2 (PlatformIO)
+// Fall Detection & SOS Device – Firmware v7.6 (PlatformIO)
 #pragma once
 #include <Arduino.h>
 

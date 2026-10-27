@@ -1,5 +1,5 @@
 // location.cpp – GPS, AGPS, WLAN-/Funkzellen-Ortung, GPS-Nachmeldung
-// Fall Detection & SOS Device – Firmware v7.5.2 (PlatformIO)
+// Fall Detection & SOS Device – Firmware v7.6 (PlatformIO)
 #include "location.h"
 #include <WiFi.h>
 #include <HTTPClient.h>

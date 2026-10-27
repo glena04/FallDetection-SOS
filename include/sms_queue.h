@@ -1,5 +1,5 @@
 // sms_queue.h – SMS-Warteschlange (im Flash gesichert)
-// Fall Detection & SOS Device – Firmware v7.5.2 (PlatformIO)
+// Fall Detection & SOS Device – Firmware v7.6 (PlatformIO)
 #pragma once
 #include <Arduino.h>
 

@@ -1,5 +1,5 @@
 // sos.cpp – SOS-Taster (2 s halten, störsicher) und Notruf-SMS
-// Fall Detection & SOS Device – Firmware v7.5.2 (PlatformIO)
+// Fall Detection & SOS Device – Firmware v7.6 (PlatformIO)
 #include "sos.h"
 #include <esp_task_wdt.h>
 #include "globals.h"

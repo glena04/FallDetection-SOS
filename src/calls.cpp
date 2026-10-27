@@ -1,9 +1,10 @@
 // calls.cpp – Anrufe von Notrufnummern automatisch annehmen (Mithören)
-// Fall Detection & SOS Device – Firmware v7.5.2 (PlatformIO)
+// Fall Detection & SOS Device – Firmware v7.6 (PlatformIO)
 #include "calls.h"
 #include "globals.h"
 #include "modem.h"
 #include "util.h"
+#include "sms_commands.h"
 
 // Vergleicht die letzten 9 Ziffern -> "+4917612345678" == "017612345678"
 bool isAuthorizedCaller(const String& caller) {
@@ -58,7 +59,13 @@ void callTask(void* pv) {
       }
     }
 
-    // 3) Auflegen über Webseite
+    // 3) v7.6: neue SMS (Befehle wie STANDORT / STATUS)
+    if (smsReceived) {
+      smsReceived = false;
+      processIncomingSms();
+    }
+
+    // 4) Auflegen über Webseite
     if (hangupRequested) {
       hangupRequested = false;
       sendATCommand("ATH", 2000);
