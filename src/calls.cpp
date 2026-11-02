@@ -1,5 +1,5 @@
 // calls.cpp – Anrufe von Notrufnummern automatisch annehmen (Mithören)
-// Fall Detection & SOS Device – Firmware v7.6 (PlatformIO)
+// Fall Detection & SOS Device – Firmware v7.6.6 (PlatformIO)
 #include "calls.h"
 #include "globals.h"
 #include "modem.h"
@@ -60,6 +60,12 @@ void callTask(void* pv) {
     }
 
     // 3) v7.6: neue SMS (Befehle wie STANDORT / STATUS)
+    //    v7.6.2: zusätzlich jede Minute nachsehen, falls eine Meldung verloren ging
+    static uint32_t lastSmsPoll = 0;
+    if (millis() - lastSmsPoll > SMS_POLL_INTERVAL_MS) {
+      lastSmsPoll = millis();
+      smsReceived = true;
+    }
     if (smsReceived) {
       smsReceived = false;
       processIncomingSms();

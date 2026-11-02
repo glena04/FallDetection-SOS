@@ -1,5 +1,5 @@
 // location.cpp – GPS, AGPS, WLAN-/Funkzellen-Ortung, GPS-Nachmeldung
-// Fall Detection & SOS Device – Firmware v7.6 (PlatformIO)
+// Fall Detection & SOS Device – Firmware v7.6.6 (PlatformIO)
 #include "location.h"
 #include <WiFi.h>
 #include <HTTPClient.h>
@@ -263,8 +263,20 @@ void gpsTask(void* pv) {
 
   for (;;) {
     // A9G erreichbar?
-    bool alive = sendATCommand("AT", 500).indexOf("OK") != -1;
-    if (alive && !modemOnline) {
+    // v7.6.3: "AT" bis zu 3x versuchen. Erst nach 3 erfolglosen Runden gilt das A9G
+    // als offline - ein kurz belegtes Modem (SMS, GPRS) löst keine Neueinrichtung mehr aus.
+    static int failRounds = 0;
+    bool responded = false;
+    for (int i = 0; i < 3 && !responded; i++) {
+      responded = sendATCommand("AT", 1000).indexOf("OK") != -1;
+      if (!responded) vTaskDelay(pdMS_TO_TICKS(500));
+    }
+    failRounds = responded ? 0 : failRounds + 1;
+    if (!responded && modemOnline && failRounds < 3) {
+      Serial.printf("A9G antwortet nicht (Runde %d/3) - warte ab.\n", failRounds);
+    }
+    bool alive = responded || (modemOnline && failRounds < 3);
+    if (responded && !modemOnline) {
       Serial.println("A9G erreichbar - wird eingerichtet.");
       gprsReady = false;
       modemInit();

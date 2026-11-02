@@ -1,5 +1,5 @@
 // main.cpp – Start: Hardware, Tasks, WLAN, Webserver
-// Fall Detection & SOS Device – Firmware v7.6 (PlatformIO)
+// Fall Detection & SOS Device – Firmware v7.6.6 (PlatformIO)
 #include <Arduino.h>
 #include <Wire.h>
 #include <esp_task_wdt.h>
@@ -12,6 +12,25 @@
 #include "fall_detection.h"
 #include "web.h"
 #include "wifi_manager.h"
+
+// v7.6.4: Grund des letzten Neustarts als Text
+static const char* resetReasonText(esp_reset_reason_t r) {
+  switch (r) {
+    case ESP_RST_POWERON:  return "Einschalten";
+    case ESP_RST_SW:       return "Software-Neustart";
+    case ESP_RST_PANIC:    return "ABSTURZ (Panic)";
+    case ESP_RST_INT_WDT:  return "WATCHDOG (Interrupt)";
+    case ESP_RST_TASK_WDT: return "WATCHDOG (Task haengt)";
+    case ESP_RST_WDT:      return "WATCHDOG";
+    case ESP_RST_BROWNOUT: return "BROWNOUT (Spannung zu niedrig!)";
+    case ESP_RST_DEEPSLEEP:return "Deep Sleep";
+    case ESP_RST_EXT:      return "Reset-Pin";
+#if ESP_IDF_VERSION_MAJOR >= 5
+    case ESP_RST_USB:      return "USB";        // gibt es erst ab Core 3.x
+#endif
+    default:               return "unbekannt";
+  }
+}
 
 // Watchdog konfigurieren (Neustart, wenn ein überwachter Task hängt)
 static void watchdogBegin() {
@@ -29,11 +48,18 @@ void setup() {
   delay(500);
 
   Serial.println();
-  Serial.println("ESP32 startet... (Firmware v7.6)");
+  String reason = resetReasonText(esp_reset_reason());
+  Serial.println("Letzter Neustart: " + reason);
+  Serial.println("ESP32 startet... (Firmware v7.6.6)");
 
   // Synchronisation
   stateMutex   = xSemaphoreCreateMutex();
   serial2Mutex = xSemaphoreCreateMutex();
+
+  // v7.6.4: ungewöhnlichen Neustart auf der Webseite anzeigen
+  if (reason != "Einschalten" && reason != "Software-Neustart" && reason != "USB" && reason != "Reset-Pin") {
+    setSmsStatus("⚠ Letzter Neustart: " + reason);
+  }
 
   watchdogBegin();
 

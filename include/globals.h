@@ -1,5 +1,5 @@
 // globals.h – gemeinsamer Zustand aller Tasks
-// Fall Detection & SOS Device – Firmware v7.6 (PlatformIO)
+// Fall Detection & SOS Device – Firmware v7.6.6 (PlatformIO)
 #pragma once
 #include <Arduino.h>
 #include <Preferences.h>
@@ -53,6 +53,12 @@ extern volatile bool callerPending;
 extern volatile bool hangupRequested;
 extern String        pendingCaller;
 extern volatile bool smsReceived;      // v7.6: neue SMS auf der SIM (+CMTI)
+
+// v7.6.1: direkt zugestellte SMS (+CMT), stateMutex
+const int SMS_DIRECT_MAX = 4;
+extern String smsDirectSender[SMS_DIRECT_MAX];
+extern String smsDirectBody[SMS_DIRECT_MAX];
+extern int    smsDirectCount;
 
 // ---- Ortung / Nachmeldung ----
 extern volatile bool     gprsReady;

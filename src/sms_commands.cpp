@@ -1,5 +1,5 @@
 // sms_commands.cpp – Befehle per SMS von gespeicherten Notrufnummern
-// Fall Detection & SOS Device – Firmware v7.6 (PlatformIO)
+// Fall Detection & SOS Device – Firmware v7.6.6 (PlatformIO)
 //
 // Befehle (Groß-/Kleinschreibung egal, Satzzeichen werden ignoriert):
 //   STANDORT / WO / LOC / LOCATION / POSITION  -> aktueller Standort
@@ -12,6 +12,7 @@
 #include "location.h"
 #include "calls.h"
 #include "sms_queue.h"
+#include "util.h"
 
 // Schutz gegen SMS-Schleifen: max. SMS_CMD_MAX Antworten pro Stunde
 static uint32_t cmdWindowStart = 0;
@@ -57,15 +58,34 @@ static void handleSmsCommand(const String& sender, const String& body) {
     Serial.println("-> ignoriert (keine gespeicherte Notrufnummer).");
     return;
   }
+
+  String cmd = normalizeCommand(body);
+  bool isLocation = (cmd == "STANDORT" || cmd == "WO" || cmd == "LOC" || cmd == "LOCATION" || cmd == "POSITION");
+  String cmdKey = isLocation ? "LOC" : (cmd == "STATUS" ? "STATUS" : "OTHER");
+
+  // v7.6.6: gleicher Befehl vom gleichen Absender innerhalb von 2 Minuten -> nur einmal antworten
+  // (z. B. wenn das Netz viele alte SMS auf einmal nachliefert)
+  static String   lastSender, lastKey;
+  static uint32_t lastTime = 0;
+  String senderKey = digitsOnly(sender);
+  if (senderKey.length() > 9) senderKey = senderKey.substring(senderKey.length() - 9);
+  if (lastTime != 0 && senderKey == lastSender && cmdKey == lastKey &&
+      millis() - lastTime < SMS_CMD_DUPLICATE_MS) {
+    Serial.println("-> bereits beantwortet (doppelte Anfrage).");
+    return;
+  }
+
   if (!commandRateOk()) {
     Serial.println("-> ignoriert (zu viele SMS-Befehle in der letzten Stunde).");
     return;
   }
+  lastSender = senderKey;
+  lastKey    = cmdKey;
+  lastTime   = millis();
 
-  String cmd = normalizeCommand(body);
   String reply;
 
-  if (cmd == "STANDORT" || cmd == "WO" || cmd == "LOC" || cmd == "LOCATION" || cmd == "POSITION") {
+  if (isLocation) {
     String lat, lon, src; int acc = 0;
     int q = getBestLocation(lat, lon, src, acc);
     reply = "STANDORT-ABFRAGE:" + buildLocationText(q, lat, lon, src, acc);
@@ -86,35 +106,64 @@ static void handleSmsCommand(const String& sender, const String& body) {
 }
 
 void processIncomingSms() {
+  // v7.6.1: zuerst direkt zugestellte SMS (+CMT) beantworten
+  String snd[SMS_DIRECT_MAX], txt[SMS_DIRECT_MAX];
+  int n = 0;
+  if (xSemaphoreTake(stateMutex, pdMS_TO_TICKS(200)) == pdTRUE) {
+    n = smsDirectCount;
+    for (int i = 0; i < n; i++) { snd[i] = smsDirectSender[i]; txt[i] = smsDirectBody[i]; }
+    smsDirectCount = 0;
+    xSemaphoreGive(stateMutex);
+  }
+  for (int i = 0; i < n; i++) handleSmsCommand(snd[i], txt[i]);
+
   // Alle ungelesenen SMS lesen (Textmodus):
   // +CMGL: 1,"REC UNREAD","+4917612345678",,"26/10/26,15:30:00+04"
   // Standort
   String r = sendATCommand("AT+CMGL=\"REC UNREAD\"", 3000);
+  if (r.indexOf("OK") == -1) {
+    // v7.6.2: Modem war belegt (z. B. GPRS-Aufbau) -> später erneut versuchen, nichts löschen
+    Serial.println("SMS-Abfrage nicht moeglich (Modem belegt) - neuer Versuch.");
+    smsReceived = true;
+    return;
+  }
+  if (r.indexOf("+CMGL:") != -1) Serial.println("Gespeicherte SMS gefunden (roh):\n" + r);
 
   int pos = 0;
   while ((pos = r.indexOf("+CMGL:", pos)) != -1) {
     int eol = r.indexOf('\n', pos);
     if (eol == -1) break;
-    String header = r.substring(pos, eol);
+    String header = r.substring(pos + 6, eol);   // ohne "+CMGL:"
+    header.trim();
 
-    // Absender = 2. Text in Anführungszeichen
-    String sender;
-    int q1 = header.indexOf('"');
-    int q2 = (q1 >= 0) ? header.indexOf('"', q1 + 1) : -1;
-    int q3 = (q2 >= 0) ? header.indexOf('"', q2 + 1) : -1;
-    int q4 = (q3 >= 0) ? header.indexOf('"', q3 + 1) : -1;
-    if (q3 != -1 && q4 > q3) sender = header.substring(q3 + 1, q4);
+    // v7.6.5: Felder an Kommas trennen (Kommas in "..." zählen nicht), Anführungszeichen entfernen
+    // Feld 0 = Index, 1 = Status, 2 = Absender – funktioniert mit und ohne Anführungszeichen
+    String field[5];
+    int f = 0;
+    bool inQuotes = false;
+    for (size_t k = 0; k < header.length() && f < 5; k++) {
+      char c = header.charAt(k);
+      if (c == '"') inQuotes = !inQuotes;
+      else if (c == ',' && !inQuotes) f++;
+      else if (f < 5) field[f] += c;
+    }
+    int    index  = field[0].toInt();
+    String sender = field[2];
+    sender.trim();
 
-    int next = r.indexOf("+CMGL:", eol);
+    int next  = r.indexOf("+CMGL:", eol);
     int okPos = r.indexOf("\nOK", eol);
-    int end = (next != -1) ? next : (okPos != -1 ? okPos : (int)r.length());
+    int end   = (next != -1) ? next : (okPos != -1 ? okPos : (int)r.length());
 
     String body = r.substring(eol + 1, end);
     body.trim();
-    if (sender.length()) handleSmsCommand(sender, body);
+
+    if (sender.length() && index > 0) {
+      handleSmsCommand(sender, body);
+      sendATCommand("AT+CMGD=" + String(index), 2000);   // v7.6.5: genau diese SMS löschen
+    } else {
+      Serial.println("SMS konnte nicht gelesen werden (Kopfzeile: " + header + ") - bleibt gespeichert.");
+    }
     pos = end;
   }
-
-  // Gelesene SMS löschen, damit der SIM-Speicher nicht voll läuft
-  sendATCommand("AT+CMGD=1,1", 2000);
 }

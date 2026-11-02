@@ -1,5 +1,5 @@
 // config.h – alle Einstellungen (Pins, Schwellen, Zeiten)
-// Fall Detection & SOS Device – Firmware v7.6 (PlatformIO)
+// Fall Detection & SOS Device – Firmware v7.6.6 (PlatformIO)
 #pragma once
 #include <Arduino.h>
 
@@ -36,7 +36,7 @@ const uint32_t SOS_LOCKOUT_MS = 60000;  // nach einem Taster-SOS 60 s Sperre
 #define I2C_SCL 9
 
 // Sturzerkennung
-const float FALL_THRESHOLD = 25.0; // ca. 2.5g - Aufprall-Schwelle ohne Freifall
+const float FALL_THRESHOLD = 15.0; // ca. 1.5g - Aufprall-Schwelle ohne Freifall
 
 // NEU: Abbruchzeit nach erkanntem Sturz (bevor die SMS gesendet wird)
 const uint32_t CANCEL_WINDOW_MS = 15000;   // 15 Sekunden
@@ -48,7 +48,7 @@ const bool MUTE_SPEAKER      = true;  // Lautsprecher stumm -> Anrufer hört nur
 const unsigned long GPS_INTERVAL = 30000;  // 30 Sekunden
 
 // v7.3: AGPS + Ersatz-Standort, solange kein GPS-Fix da ist
-const char* const GPRS_APN          = "internet";  // APN der SIM-Karte (z. B. "internet", "web.vodafone.de", "online.telia.se")
+const char* const GPRS_APN          = "web.vodafone.de";  // APN der SIM-Karte (z. B. "internet", "web.vodafone.de", "online.telia.se")
 const bool  USE_AGPS          = true;        // AGPS: schnellerer GPS-Fix (braucht mobile Daten)
 const bool  USE_WIFI_LOCATION = true;        // 1. Ersatz: WLAN-Ortung (braucht WLAN mit Internet)
 const bool  USE_CELL_LOCATION = true;        // 2. Ersatz: Funkzellen-Ortung über A9G (braucht mobile Daten)
@@ -69,7 +69,7 @@ const uint32_t SMS_SEND_TIMEOUT_MS   = 15000;    // max. Wartezeit auf +CMGS
 const uint32_t SENSOR_RETRY_MS          = 10000;    // Sensor alle 10 s neu suchen
 const uint32_t SENSOR_ALERT_AFTER_MS    = 60000;    // SMS-Warnung nach 1 min Ausfall
 const uint32_t SENSOR_ALERT_INTERVAL_MS = 21600000; // Warnung höchstens alle 6 h
-const uint32_t AP_RETRY_MS              = 300000;   // im AP-Modus alle 5 min WLAN erneut versuchen
+const uint32_t AP_RETRY_MS              = 60000;    // im AP-Modus jede Minute WLAN erneut versuchen (v7.6.4)
 const uint32_t WDT_TIMEOUT_S            = 30;       // Watchdog: Neustart, wenn ein Task 30 s hängt
 const size_t   STATUS_MAX_LEN           = 1200;     // max. Länge des Statustexts
 const int      SMS_SLOTS                = 8;        // gespeicherte SMS (= Größe der Warteschlange)
@@ -80,6 +80,8 @@ const int      WEB_SOS_MAX        = 3;        // Web-SOS: max. 3 ...
 const uint32_t WEB_SOS_WINDOW_MS  = 600000;   // ... pro 10 Minuten
 const int      WEB_SMS_MAX        = 5;        // manuelle SMS: max. 5 ...
 const uint32_t WEB_SMS_WINDOW_MS  = 600000;   // ... pro 10 Minuten
+const uint32_t SMS_POLL_INTERVAL_MS = 60000;   // v7.6.2: SIM jede Minute auf neue SMS prüfen
+const uint32_t SMS_CMD_DUPLICATE_MS = 120000;  // v7.6.6: gleiche Anfrage innerhalb 2 min nur einmal beantworten
 const int      SMS_CMD_MAX_PER_HOUR = 10;     // v7.6: max. Antworten auf SMS-Befehle pro Stunde
 const size_t   MANUAL_SMS_MAX_LEN = 80;       // Länge der eigenen Nachricht (Standort kommt dazu)
 

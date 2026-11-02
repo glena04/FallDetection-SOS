@@ -1,13 +1,44 @@
 // modem.cpp – A9G: AT-Befehle, Modem-Meldungen (URC), SMS-Versand mit Wiederholung
-// Fall Detection & SOS Device – Firmware v7.6 (PlatformIO)
+// Fall Detection & SOS Device – Firmware v7.6.6 (PlatformIO)
 #include "modem.h"
 #include "sms_queue.h"
 
 static String urcBuffer;   // Zeilenpuffer für Modem-Meldungen (serial2Mutex)
+static bool   cmtBodyNext = false;   // v7.6.1: nächste Zeile ist der Text einer +CMT-SMS
+static String cmtSender;
 
 static void handleModemLine(String line) {
   line.trim();
   if (line.length() == 0) return;
+
+  // v7.6.1: Text einer direkt zugestellten SMS (Zeile nach +CMT:)
+  if (cmtBodyNext) {
+    cmtBodyNext = false;
+    Serial.println("Modem: SMS-Text: " + line);
+    if (xSemaphoreTake(stateMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+      if (smsDirectCount < SMS_DIRECT_MAX) {
+        smsDirectSender[smsDirectCount] = cmtSender;
+        smsDirectBody[smsDirectCount]   = line;
+        smsDirectCount++;
+      }
+      xSemaphoreGive(stateMutex);
+    }
+    smsReceived = true;
+    return;
+  }
+  if (line.startsWith("+CMT:")) {                  // +CMT: "+49178...",,"26/10/27,10:00:00+04"
+    int q1 = line.indexOf('"');
+    int q2 = line.indexOf('"', q1 + 1);
+    cmtSender = (q1 != -1 && q2 > q1) ? line.substring(q1 + 1, q2) : "";
+    cmtBodyNext = true;
+    Serial.println("Modem: " + line);
+    return;
+  }
+  if (line.startsWith("+CIEV:") && line.indexOf("MESSAGE") != -1) {
+    Serial.println("Modem: " + line);
+    smsReceived = true;
+    return;
+  }
 
   if (line.startsWith("+CLIP:")) {                 // +CLIP: "+49176...",145,...
     int q1 = line.indexOf('"');
@@ -21,6 +52,7 @@ static void handleModemLine(String line) {
       callerPending = true;
     }
   } else if (line.startsWith("+CMTI:")) {         // v7.6: neue SMS gespeichert
+    Serial.println("Modem: " + line);
     smsReceived = true;
   } else if (line == "NO CARRIER" || line == "BUSY" || line == "NO ANSWER") {
     if (callActive) {
@@ -85,7 +117,12 @@ void modemInit() {
   sendATCommand("AT+CMGF=1", 1000);                    // SMS-Textmodus
   sendATCommand("AT+CLIP=1", 1000);                    // Anrufernummer anzeigen (+CLIP)
   if (MUTE_SPEAKER) sendATCommand("AT+CLVL=0", 1000);  // Lautsprecher leise (falls unterstützt)
-  sendATCommand("AT+CNMI=2,1,0,0,0", 1000);            // v7.6: neue SMS melden (+CMTI)
+  // v7.6.5: SMS-Speicher fest auf die SIM-Karte setzen (lesen, schreiben, empfangen)
+  String cpms = sendATCommand("AT+CPMS=\"SM\",\"SM\",\"SM\"", 1000);
+  Serial.println("SMS-Speicher (CPMS): " + cpms);
+  String cnmi = sendATCommand("AT+CNMI=2,1,0,0,0", 1000);   // v7.6: neue SMS melden (+CMTI)
+  if (cnmi.indexOf("OK") == -1) cnmi = sendATCommand("AT+CNMI=1,1,0,0,0", 1000);   // v7.6.5: Alternative
+  Serial.println("SMS-Benachrichtigung (CNMI): " + cnmi);
   smsReceived = true;                                  // v7.6: ungelesene SMS beim Start prüfen
 
   // v7.3: AGPS (braucht mobile Daten). Laut Handbuch vorher GPS ausschalten.
