@@ -7,7 +7,7 @@ A low-cost **personal emergency device** that detects falls automatically, has a
 ![Build](https://img.shields.io/badge/build-PlatformIO-F5822A)
 ![Modem](https://img.shields.io/badge/modem-Ai--Thinker%20A9G-orange)
 ![Status](https://img.shields.io/badge/status-prototype-yellow)
-![Version](https://img.shields.io/badge/firmware-v7.6-green)
+![Version](https://img.shields.io/badge/firmware-v7.7-green)
 
 > ⚠️ **Prototype – not a certified medical or safety device.** Do not rely on it as the only protection for a person at risk. See [Safety, privacy & legal notice](#%EF%B8%8F-safety-privacy--legal-notice).
 
@@ -65,6 +65,8 @@ The goal of this prototype is to validate the concept before moving to a small p
 | 📍 **GPS + AGPS** | AGPS (assisted GPS over mobile data) for a faster first fix, normal GPS as fallback |
 | 📶 **Approximate location** | Without a GPS fix: Wi-Fi location (when the device is on Wi-Fi) or cell tower location via the A9G |
 | 🔁 **Location follow-up** | If the alarm had no GPS position, a second SMS with the exact GPS position is sent automatically as soon as GPS is available |
+| 🔋 **Power saving** | After 10 min idle: ESP32 light sleep, A9G sleep mode, GPS and Wi-Fi off. Wakes on SOS button, movement (MPU6050 INT), incoming call/SMS |
+| 🛰️ **Location on demand** | GPS, Wi-Fi and cell location only during an alarm or a `STANDORT` request; best result after max. 20 s |
 | 💬 **SMS commands** | Saved contacts can text `STANDORT` or `STATUS` to the device and get the location or device status back |
 | 🎧 **Call-back & listen-in** | Calls from saved emergency numbers are answered automatically; other callers are rejected |
 | 🌐 **Web interface** | Live location, sensor values, SMS status, phone numbers, Wi-Fi setup, cancel & hang-up buttons |
@@ -243,10 +245,13 @@ sequenceDiagram
 | **GPIO 9** | MPU6050 SCL | `I2C_SCL` |
 | **GPIO 4** | SOS button → GND | `SOS_BUTTON_PIN`, internal pull-up, active LOW, 100 nF to GND |
 | **GPIO 14** | Buzzer (via NPN transistor) | `BUZZER_PIN`, HIGH = beep |
+| **GPIO 5** | MPU6050 **INT** | `MPU_INT_PIN`, wakes the ESP32 on movement (power saving) |
 | **GPIO 17** (TX2) | A9G **U_RXD** | `TXD2`, **through voltage divider** (3.3 V → ~2.8 V) |
 | **GPIO 16** (RX2) | A9G **U_TXD** | `RXD2`, direct |
 | 3V3 | MPU6050 VCC | |
 | GND | All GNDs | **shared ground is mandatory** |
+
+> 🔋 **For power saving, connect the MPU6050 `INT` pin to GPIO 5.** Without it the ESP32 cannot sleep (GPS, Wi-Fi and modem still save power).
 
 ### Notes on the wiring
 
@@ -442,6 +447,41 @@ const char* const AP_PASS = "sos12345";
 | `LISTEN_IN_ENABLED` | `true` | Answer calls from saved numbers automatically |
 | `MUTE_SPEAKER` | `true` | Caller only listens (`AT+CLVL=0`) |
 
+### Power saving (v7.7)
+
+| Constant | Default | Meaning |
+|---|---|---|
+| `POWER_SAVE_ENABLED` | `true` | `false` = everything always on (e.g. on USB for debugging) |
+| `MPU_INT_PIN` | 5 | MPU6050 INT pin (`-1` = not connected → no ESP32 sleep) |
+| `A9G_SLEEP_ENABLED` | `true` | A9G sleep mode (`AT+SLEEP=1`); set `false` if the A9G stops responding |
+| `IDLE_SLEEP_MS` | 10 min | Stay awake after boot / web use / serial console, then sleep |
+| `WIFI_SETUP_WINDOW_MS` | 10 min | Wi-Fi after boot and after SMS `SETUP` |
+| `ALARM_LOCATION_WAIT_MS` | 20 s | Max. wait for GPS before the alarm SMS (the fall countdown counts) |
+| `ALARM_GPS_HOLD_MS` | 2 min | GPS stays on after an alarm for the GPS follow-up |
+| `POST_SMS_AWAKE_MS` | 30 s | Stay awake after an SMS was sent (call-back) |
+| `MOTION_WAKE_THRESHOLD` | 150 | MPU wake threshold (≈ 0.3 g) |
+| `HOUSEKEEPING_INTERVAL_MS` | 15 min | Short wake-up to check SMS |
+
+**How it works**
+
+```mermaid
+stateDiagram-v2
+    [*] --> Awake: boot (10 min, Wi-Fi on)
+    Awake --> Sleep: nothing to do
+    Sleep --> MotionCheck: MPU INT (movement)
+    MotionCheck --> Sleep: no fall (5 s)
+    MotionCheck --> Alarm: impact + position change
+    Sleep --> Alarm: SOS button 2 s
+    Sleep --> Modem: call / SMS
+    Modem --> Sleep: handled
+    Sleep --> Sleep: every 15 min SMS check
+    Alarm --> Locating: GPS + Wi-Fi on (countdown / max. 20 s)
+    Locating --> SMS: GPS → Wi-Fi → cell
+    SMS --> Sleep: SMS confirmed (+30 s, GPS follow-up max. 2 min)
+```
+
+During sleep the web page is not reachable. Send the SMS **`SETUP`** to switch Wi-Fi and the web page on for 10 minutes.
+
 ### Reliability & web protection
 
 | Constant | Default | Meaning |
@@ -514,7 +554,8 @@ Send an SMS **to the device's SIM number** from one of the saved emergency numbe
 | SMS text | Reply |
 |---|---|
 | `STANDORT` (also `WO`, `LOC`, `LOCATION`, `POSITION`) | Current location with Google Maps link (GPS, or approximate + "GPS wird gesucht") |
-| `STATUS` | Fall sensor, GPS, mobile network/signal, Wi-Fi |
+| `STATUS` | Fall sensor, GPS, mobile network/signal, Wi-Fi, power saving |
+| `SETUP` (also `WLAN`, `WIFI`) | Wi-Fi + web page on for 10 min (home Wi-Fi, otherwise setup Wi-Fi) |
 | anything else | List of possible commands |
 
 - Upper/lower case and punctuation don't matter (`standort?` works).
@@ -653,7 +694,8 @@ fall-detection-sos/
 │   ├── sms_commands.cpp    # SMS commands STANDORT / STATUS
 │   ├── location.cpp        # gpsTask: GPS, AGPS, Wi-Fi & cell location, follow-up
 │   ├── web.cpp             # web server, forms, protection
-│   ├── wifi_manager.cpp    # Wi-Fi, setup access point, reconnect
+│   ├── wifi_manager.cpp    # Wi-Fi on demand, setup access point, reconnect
+│   ├── power.cpp           # powerTask: light sleep, wake sources
 │   └── util.cpp            # text helpers (phone check, SMS cleaning, JSON)
 ├── docs/images/            # photos, wiring
 ├── README.md
@@ -691,6 +733,8 @@ fall-detection-sos/
 | **v7.5** | Moved to **PlatformIO**: split into modules, `config.h`, `secrets.h`, verified build for ESP32-S3 |
 | **v7.5.1–7.5.2** | Diagnostics: mobile network status on web page, AT console in the serial monitor, detailed Wi-Fi location log, robust Wi-Fi scan with retries |
 | **v7.6** | SMS commands `STANDORT` and `STATUS` from saved numbers |
+| **v7.6.1–7.6.6** | Robust SMS reading (CPMS, +CMT/+CMTI, delete by index), duplicate suppression, reset reason, modem offline detection |
+| **v7.7** | **Power saving:** ESP32 light sleep, A9G sleep, GPS/Wi-Fi only on demand, wake on SOS/movement/modem, SMS `SETUP` |
 | Product planning | Configuration by SMS / web portal, hosting (VPS + MQTT), cost estimate for a custom PCB |
 
 ---
@@ -716,11 +760,11 @@ fall-detection-sos/
 - [ ] Optional weekly self-test SMS
 
 **Battery / product version**
-- [ ] GPS only on demand (switched on during an alarm)
-- [ ] Battery mode: Wi-Fi off when idle, setup Wi-Fi by holding the SOS button for 10 s
+- [x] GPS only on demand (switched on during an alarm)
+- [x] Battery mode: Wi-Fi off when idle, setup Wi-Fi via SMS `SETUP`
 - [ ] Wi-Fi location on demand – scan during an alarm, sent via home Wi-Fi or **A9G/LTE + relay** (`locate.php`) so it also works outside
 - [ ] Battery voltage measurement and low-battery SMS
-- [ ] ESP32 light sleep, wake-up by SOS button and IMU interrupt
+- [x] ESP32 light sleep, wake-up by SOS button and IMU interrupt
 - [ ] Replace A9G (2G) with **Quectel BG95-M3** (LTE-M / NB-IoT + GNSS, PSM/eDRX)
 - [ ] Replace MPU6050 with **ST LSM6DSOX** (on-chip free-fall, wake-up & ML core) + LIS3MDL
 - [ ] Custom **PCB** with ESP32-S3, BG95-M3, GNSS and IMU in a small wearable case

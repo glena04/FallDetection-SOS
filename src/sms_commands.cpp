@@ -1,5 +1,5 @@
 // sms_commands.cpp – Befehle per SMS von gespeicherten Notrufnummern
-// Fall Detection & SOS Device – Firmware v7.6.6 (PlatformIO)
+// Fall Detection & SOS Device – Firmware v7.7.3 (PlatformIO)
 //
 // Befehle (Groß-/Kleinschreibung egal, Satzzeichen werden ignoriert):
 //   STANDORT / WO / LOC / LOCATION / POSITION  -> aktueller Standort
@@ -13,6 +13,8 @@
 #include "calls.h"
 #include "sms_queue.h"
 #include "util.h"
+#include "power.h"
+#include "wifi_manager.h"
 
 // Schutz gegen SMS-Schleifen: max. SMS_CMD_MAX Antworten pro Stunde
 static uint32_t cmdWindowStart = 0;
@@ -44,11 +46,13 @@ static String statusText() {
     net = modemNetStatus;
     xSemaphoreGive(stateMutex);
   }
-  String wifi = apMode ? "Setup-Modus" : (WiFi.status() == WL_CONNECTED ? "verbunden" : "getrennt");
+  String wifi = !wifiActive() ? "aus" :
+                (apMode ? "Setup-Modus" : (WiFi.status() == WL_CONNECTED ? "verbunden" : "getrennt"));
+  String gps = fix ? "Fix" : ((POWER_SAVE_ENABLED && !gpsIsActive()) ? "aus" : "kein Fix");
   return String("STATUS: Sturzsensor ") + (sensorOk ? "OK" : "AUSGEFALLEN") +
-         ", GPS " + (fix ? "Fix" : "kein Fix") +
+         ", GPS " + gps +
          ", " + net +
-         ", WLAN " + wifi + ".";
+         ", WLAN " + wifi + ", " + powerStatusText() + ".";
 }
 
 static void handleSmsCommand(const String& sender, const String& body) {
@@ -61,7 +65,8 @@ static void handleSmsCommand(const String& sender, const String& body) {
 
   String cmd = normalizeCommand(body);
   bool isLocation = (cmd == "STANDORT" || cmd == "WO" || cmd == "LOC" || cmd == "LOCATION" || cmd == "POSITION");
-  String cmdKey = isLocation ? "LOC" : (cmd == "STATUS" ? "STATUS" : "OTHER");
+  bool isSetup = (cmd == "SETUP" || cmd == "WLAN" || cmd == "WIFI");
+  String cmdKey = isLocation ? "LOC" : (cmd == "STATUS" ? "STATUS" : (isSetup ? "SETUP" : "OTHER"));
 
   // v7.6.6: gleicher Befehl vom gleichen Absender innerhalb von 2 Minuten -> nur einmal antworten
   // (z. B. wenn das Netz viele alte SMS auf einmal nachliefert)
@@ -85,7 +90,14 @@ static void handleSmsCommand(const String& sender, const String& body) {
 
   String reply;
 
-  if (isLocation) {
+  if (isLocation && POWER_SAVE_ENABLED) {
+    // v7.7: GPS/WLAN einschalten, Antwort folgt nach der Ortung (max. 20 s)
+    locationPrepare();
+    locationQueueReply(sender, "STANDORT-ABFRAGE:");
+    Serial.println("-> Ortung gestartet, Antwort folgt.");
+    appendSmsStatus("\n📩 Standort-Abfrage von " + sender + " – Ortung läuft.");
+    return;
+  } else if (isLocation) {
     String lat, lon, src; int acc = 0;
     int q = getBestLocation(lat, lon, src, acc);
     reply = "STANDORT-ABFRAGE:" + buildLocationText(q, lat, lon, src, acc);
@@ -95,8 +107,14 @@ static void handleSmsCommand(const String& sender, const String& body) {
     }
   } else if (cmd == "STATUS") {
     reply = statusText();
+  } else if (isSetup) {
+    // v7.7: WLAN + Webseite für 10 Minuten (Heim-WLAN, sonst Setup-WLAN)
+    wifiRequest(WIFI_SETUP_WINDOW_MS, true);
+    powerActivity(WIFI_SETUP_WINDOW_MS);
+    reply = "SETUP: WLAN fuer " + String(WIFI_SETUP_WINDOW_MS / 60000) +
+            " min an. Heim-WLAN oder Setup-WLAN " + String(AP_SSID) + " (192.168.4.1).";
   } else {
-    reply = "Unbekannter Befehl. Moeglich: STANDORT, STATUS";
+    reply = "Unbekannter Befehl. Moeglich: STANDORT, STATUS, SETUP";
   }
 
   if (queueSms(sender, reply)) {
@@ -166,4 +184,8 @@ void processIncomingSms() {
     }
     pos = end;
   }
+
+  // v7.7.2: bereits gelesene, aber nicht verarbeitete SMS löschen (ungelesene bleiben),
+  // damit der SIM-Speicher nicht wieder voll läuft (SMSFULL -> keine neuen SMS)
+  sendATCommand("AT+CMGD=1,1", 2000);
 }

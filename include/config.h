@@ -1,5 +1,5 @@
 // config.h – alle Einstellungen (Pins, Schwellen, Zeiten)
-// Fall Detection & SOS Device – Firmware v7.6.6 (PlatformIO)
+// Fall Detection & SOS Device – Firmware v7.7.3 (PlatformIO)
 #pragma once
 #include <Arduino.h>
 
@@ -36,7 +36,7 @@ const uint32_t SOS_LOCKOUT_MS = 60000;  // nach einem Taster-SOS 60 s Sperre
 #define I2C_SCL 9
 
 // Sturzerkennung
-const float FALL_THRESHOLD = 15.0; // ca. 1.5g - Aufprall-Schwelle ohne Freifall
+const float FALL_THRESHOLD = 20.0; // ca. 2g - Aufprall-Schwelle ohne Freifall
 
 // NEU: Abbruchzeit nach erkanntem Sturz (bevor die SMS gesendet wird)
 const uint32_t CANCEL_WINDOW_MS = 15000;   // 15 Sekunden
@@ -77,13 +77,33 @@ const int      SMS_SLOTS                = 8;        // gespeicherte SMS (= Grö�
 
 // v7.4 Stufe 2: Schutz der Webseite (ohne Login)
 const int      WEB_SOS_MAX        = 3;        // Web-SOS: max. 3 ...
-const uint32_t WEB_SOS_WINDOW_MS  = 600000;   // ... pro 10 Minuten
+const uint32_t WEB_SOS_WINDOW_MS  = 300000;   // ... pro 10 Minuten
 const int      WEB_SMS_MAX        = 5;        // manuelle SMS: max. 5 ...
-const uint32_t WEB_SMS_WINDOW_MS  = 600000;   // ... pro 10 Minuten
+const uint32_t WEB_SMS_WINDOW_MS  = 300000;   // ... pro 10 Minuten
 const uint32_t SMS_POLL_INTERVAL_MS = 60000;   // v7.6.2: SIM jede Minute auf neue SMS prüfen
 const uint32_t SMS_CMD_DUPLICATE_MS = 120000;  // v7.6.6: gleiche Anfrage innerhalb 2 min nur einmal beantworten
 const int      SMS_CMD_MAX_PER_HOUR = 10;     // v7.6: max. Antworten auf SMS-Befehle pro Stunde
 const size_t   MANUAL_SMS_MAX_LEN = 80;       // Länge der eigenen Nachricht (Standort kommt dazu)
+
+// ======================= ENERGIESPAREN (v7.7) =======================
+// Ruhezustand: ESP32 im Light Sleep, A9G im Schlafmodus, GPS und WLAN aus.
+// Wecken: SOS-Taste, Bewegung (MPU6050-INT), Modem-Meldung (Anruf/SMS), Timer.
+const bool     POWER_SAVE_ENABLED       = true;     // false = alles dauerhaft an (z. B. am USB)
+#define MPU_INT_PIN 5                                // MPU6050 INT -> ESP32 GPIO 5 (-1 = nicht verbunden: kein ESP-Schlaf)
+const bool     A9G_SLEEP_ENABLED        = false;    // A9G-Schlafmodus (AT+SLEEP=1) – v7.7.3: aus, A9G war danach nicht mehr erreichbar
+const uint32_t IDLE_SLEEP_MS            = 600000;   // 10 min nach Start/Bedienung wach, dann Schlaf
+const uint32_t WIFI_SETUP_WINDOW_MS     = 600000;   // WLAN nach Start / SMS "SETUP" 10 min an
+const uint32_t ALARM_LOCATION_WAIT_MS   = 20000;    // Alarm: max. 20 s auf GPS warten (inkl. Countdown)
+const uint32_t ALARM_GPS_HOLD_MS        = 120000;   // GPS nach Alarm 2 min an (GPS-Nachmeldung)
+const uint32_t ALARM_WIFI_HOLD_MS       = 30000;    // WLAN für die Ortung 30 s an
+const uint32_t POST_SMS_AWAKE_MS        = 30000;    // nach gesendeter SMS noch 30 s wach (Rückruf)
+const uint32_t MOTION_WINDOW_MS         = 5000;     // nach Bewegung 5 s wach (Sturzprüfung)
+const float    MOTION_AWAKE_DEV         = 3.0f;     // m/s² Abweichung von 1 g = Bewegung
+const uint8_t  MOTION_WAKE_THRESHOLD    = 150;      // MPU-Weckschwelle (1 ≈ 2 mg) -> ca. 0,3 g
+const uint32_t HOUSEKEEPING_INTERVAL_MS = 900000;   // alle 15 min kurz wach (SMS prüfen)
+const uint32_t HOUSEKEEPING_AWAKE_MS    = 15000;
+const uint32_t MODEM_WAKE_HOLD_MS       = 10000;    // nach Modem-Meldung 10 s wach
+const uint32_t MODEM_CHECK_IDLE_MS      = 600000;   // Modem-Prüfung im Ruhezustand alle 10 min
 
 // ======================= STURZERKENNUNG =======================
 // ---- Parameter Sturzerkennung ----

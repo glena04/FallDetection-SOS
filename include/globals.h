@@ -1,5 +1,5 @@
 // globals.h – gemeinsamer Zustand aller Tasks
-// Fall Detection & SOS Device – Firmware v7.6.6 (PlatformIO)
+// Fall Detection & SOS Device – Firmware v7.7.3 (PlatformIO)
 #pragma once
 #include <Arduino.h>
 #include <Preferences.h>
@@ -46,6 +46,8 @@ extern float mpuGyrX, mpuGyrY, mpuGyrZ;
 // ---- Abbruch-Countdown ----
 extern volatile bool alarmPending;
 extern volatile bool alarmCancelled;
+extern volatile bool fallCheckActive;   // v7.7: Sturzprüfung läuft (Aufprall erkannt)
+extern volatile bool smsBusy;           // v7.7: smsTask sendet gerade
 
 // ---- Anruf ----
 extern volatile bool callActive;

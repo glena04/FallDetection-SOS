@@ -1,5 +1,5 @@
 // web.cpp – Weboberfläche: Seiten, Formulare, Schutz (Host/Origin, Limits)
-// Fall Detection & SOS Device – Firmware v7.6.6 (PlatformIO)
+// Fall Detection & SOS Device – Firmware v7.7.3 (PlatformIO)
 #include "web.h"
 #include <WiFi.h>
 #include <AsyncTCP.h>
@@ -10,6 +10,8 @@
 #include "location.h"
 #include "sos.h"
 #include "sms_queue.h"
+#include "power.h"
+#include "wifi_manager.h"
 
 static AsyncWebServer server(80);
 
@@ -104,7 +106,7 @@ static bool rateAllow(RateLimit& rl) {
 // Wrapper für alle Routen: Host prüfen, bei Änderungen zusätzlich Herkunft prüfen
 static void addRoute(const char* uri, WebRequestMethodComposite method,
               void (*handler)(AsyncWebServerRequest*), bool changesState) {
-  server.on(uri, method, [handler, changesState](AsyncWebServerRequest* r) {
+  server.on(uri, method, [uri, handler, changesState](AsyncWebServerRequest* r) {
     if (!hostOk(r)) {
       r->send(403, "text/plain; charset=utf-8", "Zugriff nur über die IP-Adresse des Geräts.");
       return;
@@ -113,6 +115,12 @@ static void addRoute(const char* uri, WebRequestMethodComposite method,
       Serial.println("Blockiert: Anfrage von fremder Webseite an " + r->url());
       r->send(403, "text/plain; charset=utf-8", "Anfrage von fremder Webseite blockiert.");
       return;
+    }
+    // v7.7.2: nur Seitenaufruf und Aktionen halten das Gerät wach –
+    // die automatische Abfrage im Sekundentakt (/getMPU usw.) nicht
+    if (changesState || strcmp(uri, "/") == 0) {
+      powerActivity(IDLE_SLEEP_MS);
+      if (POWER_SAVE_ENABLED) wifiRequest(IDLE_SLEEP_MS, false);
     }
     handler(r);
   });
@@ -316,15 +324,12 @@ static void handleSOS(AsyncWebServerRequest* request) {
     return;
   }
 
-  int queued = enqueueSOSForAllNumbers("NOTRUF! Ich brauche Hilfe.");
-  if (queued == 0) {
-    request->send(503, "text/plain; charset=utf-8", "SMS-Warteschlange voll.");
-    return;
-  }
-
-  setSmsStatus("Notruf wird an " + String(queued) + " Nummer(n) gesendet...");
+  // v7.7: Notruf mit bestem Standort (Energiesparen: GPS max. 20 s)
+  locationPrepare();
+  locationQueueAlarm("NOTRUF! Ich brauche Hilfe.");
+  setSmsStatus("Notruf wird gesendet (Standort wird bestimmt)...");
   request->send(200, "text/plain; charset=utf-8",
-                "Notruf-SMS an " + String(queued) + " Nummer(n) in Warteschlange.");
+                "Notruf wird gesendet – Standort wird bestimmt.");
 }
 
 void webBegin() {

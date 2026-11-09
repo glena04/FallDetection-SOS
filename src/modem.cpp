@@ -1,7 +1,8 @@
 // modem.cpp – A9G: AT-Befehle, Modem-Meldungen (URC), SMS-Versand mit Wiederholung
-// Fall Detection & SOS Device – Firmware v7.6.6 (PlatformIO)
+// Fall Detection & SOS Device – Firmware v7.7.3 (PlatformIO)
 #include "modem.h"
 #include "sms_queue.h"
+#include "power.h"
 
 static String urcBuffer;   // Zeilenpuffer für Modem-Meldungen (serial2Mutex)
 static bool   cmtBodyNext = false;   // v7.6.1: nächste Zeile ist der Text einer +CMT-SMS
@@ -83,12 +84,44 @@ void drainModem() {
   if (s.length()) feedModem(s);
 }
 
+// v7.7: A9G im Schlafmodus verliert das erste Zeichen -> vorher mit "AT" aufwecken.
+// Nur mit gehaltenem serial2Mutex aufrufen.
+static uint32_t lastModemTx = 0;
+static bool     modemSleepSet = false;
+
+static void modemNudge() {
+  if (POWER_SAVE_ENABLED && A9G_SLEEP_ENABLED && millis() - lastModemTx > 2000) {
+    // v7.7.3: mehrmals "AT" senden, bis das A9G antwortet (max. ca. 1,5 s)
+    for (int i = 0; i < 6; i++) {
+      while (Serial2.available()) Serial2.read();
+      Serial2.println("AT");
+      String r;
+      uint32_t t0 = millis();
+      while (millis() - t0 < 250) {
+        while (Serial2.available()) r += (char)Serial2.read();
+        if (r.indexOf("OK") != -1) break;
+        vTaskDelay(pdMS_TO_TICKS(10));
+      }
+      if (r.indexOf("OK") != -1) break;
+    }
+  }
+  lastModemTx = millis();
+}
+
+void modemEnableSleep() {
+  if (!POWER_SAVE_ENABLED || !A9G_SLEEP_ENABLED || modemSleepSet) return;
+  String r = sendATCommand("AT+SLEEP=1", 1000);
+  Serial.println("A9G-Schlafmodus (AT+SLEEP=1): " + r);
+  modemSleepSet = true;     // nur einmal pro Einrichtung versuchen
+}
+
 String sendATCommand(String command, unsigned long timeout) {
   String response = "";
   if (xSemaphoreTake(serial2Mutex, pdMS_TO_TICKS(timeout + 1000)) != pdTRUE) {
     return response;
   }
   drainModem();                       // alte Meldungen auswerten (z. B. RING)
+  modemNudge();                       // v7.7: A9G ggf. aufwecken
   Serial2.println(command);
   unsigned long start = millis();
   while (millis() - start < timeout) {
@@ -124,16 +157,10 @@ void modemInit() {
   if (cnmi.indexOf("OK") == -1) cnmi = sendATCommand("AT+CNMI=1,1,0,0,0", 1000);   // v7.6.5: Alternative
   Serial.println("SMS-Benachrichtigung (CNMI): " + cnmi);
   smsReceived = true;                                  // v7.6: ungelesene SMS beim Start prüfen
-
-  // v7.3: AGPS (braucht mobile Daten). Laut Handbuch vorher GPS ausschalten.
-  bool agpsOn = false;
-  if (USE_AGPS && ensureGprs()) {
-    sendATCommand("AT+GPS=0", 1000);
-    String r = sendATCommand("AT+AGPS=1", 5000);
-    agpsOn = r.indexOf("OK") != -1;
-    Serial.println(agpsOn ? "AGPS aktiv." : "AGPS nicht moeglich: " + r);
-  }
-  if (!agpsOn) sendATCommand("AT+GPS=1", 2000);        // normales GPS
+  modemSleepSet = false;                               // v7.7: Schlafmodus nach Einrichtung neu setzen
+  // v7.7.3: Schlafmodus abschalten, falls er (z. B. von v7.7) noch aktiv ist
+  if (!A9G_SLEEP_ENABLED) sendATCommand("AT+SLEEP=0", 1000);
+  // v7.7: GPS wird nicht mehr hier, sondern in location.cpp nach Bedarf geschaltet
 }
 
 // v7.2: Ist das A9G bereit zum Senden? (antwortet + im Netz angemeldet)
@@ -155,6 +182,7 @@ bool trySendSms(const SmsRequest& req, String& err) {
   }
 
   drainModem();
+  modemNudge();                       // v7.7
   Serial2.println("AT+CMGF=1");
   vTaskDelay(pdMS_TO_TICKS(500));
   drainModem();
@@ -211,6 +239,7 @@ void smsTask(void* pv) {
   SmsRequest req;
   for (;;) {
     if (xQueueReceive(smsQueue, &req, portMAX_DELAY) != pdTRUE) continue;
+    smsBusy = true;                 // v7.7: nicht schlafen, solange gesendet wird
 
     uint32_t firstTry = millis();
     int attempt = 0;
@@ -220,6 +249,7 @@ void smsTask(void* pv) {
       if (trySendSms(req, err)) {
         appendSmsStatus("\nSMS gesendet an: " + String(req.number) +
                         (attempt > 1 ? " (Versuch " + String(attempt) + ")" : ""));
+        powerActivity(POST_SMS_AWAKE_MS);   // v7.7: kurz wach bleiben (Rückruf, weitere SMS)
         break;
       }
 
@@ -237,6 +267,7 @@ void smsTask(void* pv) {
       vTaskDelay(pdMS_TO_TICKS(SMS_RETRY_INTERVAL_MS));
     }
     releaseSlot(req.slot);          // v7.4: gesendet oder aufgegeben -> aus dem Flash löschen
+    smsBusy = false;
     vTaskDelay(pdMS_TO_TICKS(200));
   }
 }

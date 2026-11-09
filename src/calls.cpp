@@ -1,10 +1,11 @@
 // calls.cpp – Anrufe von Notrufnummern automatisch annehmen (Mithören)
-// Fall Detection & SOS Device – Firmware v7.6.6 (PlatformIO)
+// Fall Detection & SOS Device – Firmware v7.7.3 (PlatformIO)
 #include "calls.h"
 #include "globals.h"
 #include "modem.h"
 #include "util.h"
 #include "sms_commands.h"
+#include "location.h"
 
 // Vergleicht die letzten 9 Ziffern -> "+4917612345678" == "017612345678"
 bool isAuthorizedCaller(const String& caller) {
@@ -66,7 +67,10 @@ void callTask(void* pv) {
       lastSmsPoll = millis();
       smsReceived = true;
     }
-    if (smsReceived) {
+    // v7.7.2: nur wenn das A9G bereit ist, und nach einem Fehlversuch 10 s Pause
+    static uint32_t lastSmsAttempt = 0;
+    if (smsReceived && modemIsOnline() && millis() - lastSmsAttempt > 10000) {
+      lastSmsAttempt = millis();
       smsReceived = false;
       processIncomingSms();
     }

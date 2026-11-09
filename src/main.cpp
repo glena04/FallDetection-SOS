@@ -1,5 +1,5 @@
 // main.cpp – Start: Hardware, Tasks, WLAN, Webserver
-// Fall Detection & SOS Device – Firmware v7.6.6 (PlatformIO)
+// Fall Detection & SOS Device – Firmware v7.7.3 (PlatformIO)
 #include <Arduino.h>
 #include <Wire.h>
 #include <esp_task_wdt.h>
@@ -12,6 +12,7 @@
 #include "fall_detection.h"
 #include "web.h"
 #include "wifi_manager.h"
+#include "power.h"
 
 // v7.6.4: Grund des letzten Neustarts als Text
 static const char* resetReasonText(esp_reset_reason_t r) {
@@ -50,7 +51,7 @@ void setup() {
   Serial.println();
   String reason = resetReasonText(esp_reset_reason());
   Serial.println("Letzter Neustart: " + reason);
-  Serial.println("ESP32 startet... (Firmware v7.6.6)");
+  Serial.println("ESP32 startet... (Firmware v7.7.3)");
 
   // Synchronisation
   stateMutex   = xSemaphoreCreateMutex();
@@ -69,6 +70,9 @@ void setup() {
     pinMode(BUZZER_PIN, OUTPUT);
     digitalWrite(BUZZER_PIN, LOW);
   }
+
+  // v7.7: MPU6050-INT (Wecken bei Bewegung)
+  if (MPU_INT_PIN >= 0) pinMode(MPU_INT_PIN, INPUT);
 
   // MPU6050 (I2C) – falls nicht gefunden, versucht mpuTask es weiter
   Wire.begin(I2C_SDA, I2C_SCL);
@@ -90,6 +94,14 @@ void setup() {
   xTaskCreate(mpuTask,    "mpuTask",    8192, NULL, 1, NULL); // Sturzerkennung (50 Hz)
   xTaskCreate(callTask,   "callTask",   4096, NULL, 2, NULL); // Rückruf / Mithören
 
+  // v7.7: Energiesparen – nach dem Start 10 min wach (Einrichtung), dann Schlaf
+  powerActivity(IDLE_SLEEP_MS);
+  xTaskCreate(powerTask,  "powerTask",  4096, NULL, 1, NULL);
+  if (POWER_SAVE_ENABLED) {
+    Serial.printf("Energiesparen an: Schlaf nach %lu min ohne Bedienung. WLAN-Einrichtung: SMS \"SETUP\".\n",
+                  (unsigned long)(IDLE_SLEEP_MS / 60000));
+  }
+
   wifiBegin();
   webBegin();
 }
@@ -102,6 +114,7 @@ static void serialAtConsole() {
     if (c == '\r' || c == '\n') {
       line.trim();
       if (line.length()) {
+        powerActivity(IDLE_SLEEP_MS);        // v7.7: Diagnose am PC -> wach bleiben
         if (line.length() >= 2 && line.substring(0, 2).equalsIgnoreCase("AT")) {
           Serial.println(">> " + line);
           Serial.println(sendATCommand(line, 3000));

@@ -1,5 +1,5 @@
 // modem.h – A9G: AT-Befehle, Modem-Meldungen, SMS-Versand
-// Fall Detection & SOS Device – Firmware v7.6.6 (PlatformIO)
+// Fall Detection & SOS Device – Firmware v7.7.3 (PlatformIO)
 #pragma once
 #include <Arduino.h>
 #include "globals.h"
@@ -7,7 +7,8 @@
 String sendATCommand(String command, unsigned long timeout);
 void   feedModem(const String& data);    // nur mit serial2Mutex aufrufen
 void   drainModem();                     // nur mit serial2Mutex aufrufen
-void   modemInit();                      // SMS-Modus, Anrufer-ID, AGPS/GPS
+void   modemInit();                      // SMS-Modus, Anrufer-ID, SMS-Speicher
+void   modemEnableSleep();               // v7.7: A9G-Schlafmodus einschalten (einmal pro Einrichtung)
 bool   ensureGprs();                     // mobile Daten aktivieren
 bool   trySendSms(const SmsRequest& req, String& err);
 void   smsTask(void* pv);

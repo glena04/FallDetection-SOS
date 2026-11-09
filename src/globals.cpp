@@ -1,5 +1,5 @@
 // globals.cpp – Definition des gemeinsamen Zustands + Status-Helfer
-// Fall Detection & SOS Device – Firmware v7.6.6 (PlatformIO)
+// Fall Detection & SOS Device – Firmware v7.7.3 (PlatformIO)
 #include "globals.h"
 
 SemaphoreHandle_t stateMutex   = nullptr;
@@ -27,6 +27,8 @@ float mpuGyrX = 0, mpuGyrY = 0, mpuGyrZ = 0;
 
 volatile bool alarmPending   = false;
 volatile bool alarmCancelled = false;
+volatile bool fallCheckActive = false;
+volatile bool smsBusy         = false;
 
 volatile bool callActive      = false;
 volatile bool callerPending   = false;

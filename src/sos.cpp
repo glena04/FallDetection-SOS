@@ -1,5 +1,5 @@
 // sos.cpp – SOS-Taster (2 s halten, störsicher) und Notruf-SMS
-// Fall Detection & SOS Device – Firmware v7.6.6 (PlatformIO)
+// Fall Detection & SOS Device – Firmware v7.7.3 (PlatformIO)
 #include "sos.h"
 #include <esp_task_wdt.h>
 #include "globals.h"
@@ -35,13 +35,11 @@ static void sendButtonSOS() {
     setSmsStatus("SOS-Taster gedrückt, aber keine Nummer gespeichert!");
     return;
   }
-  int queued = enqueueSOSForAllNumbers("NOTRUF! Ich brauche Hilfe.");
-  if (queued > 0) {
-    setSmsStatus("SOS-Taster: Notruf an " + String(queued) + " Nummer(n) gesendet.");
-    Serial.println("SOS-SMS an " + String(queued) + " Nummer(n) in Warteschlange.");
-  } else {
-    setSmsStatus("SOS-Taster: SMS-Warteschlange voll!");
-  }
+  // v7.7: GPS/WLAN einschalten, Notruf geht raus, sobald ein Standort da ist (max. 20 s)
+  locationPrepare();
+  locationQueueAlarm("NOTRUF! Ich brauche Hilfe.");
+  setSmsStatus("SOS-Taster: Notruf wird gesendet (Standort wird bestimmt)...");
+  Serial.println("SOS: Standort wird bestimmt, Notruf-SMS folgt.");
 }
 
 // v7.1: Taster wird alle 20 ms abgefragt.

@@ -1,6 +1,10 @@
 // wifi_manager.h – WLAN-Verbindung und Setup-Access-Point
-// Fall Detection & SOS Device – Firmware v7.6.6 (PlatformIO)
+// Fall Detection & SOS Device – Firmware v7.7.3 (PlatformIO)
 #pragma once
+#include <Arduino.h>
 
-void wifiBegin();   // verbinden, sonst Setup-AP starten
-void wifiLoop();    // Verbindung überwachen, aus dem AP-Modus erneut verbinden
+void wifiBegin();                          // beim Start: verbinden (Energiesparen: Setup-Fenster)
+void wifiLoop();                           // im loop(): Verbindung, AP, Abschalten
+void wifiRequest(uint32_t ms, bool allowAp); // WLAN für ms einschalten/verlängern (thread-sicher)
+bool wifiActive();                         // WLAN-Funk eingeschaltet
+bool wifiConnecting();                     // Verbindung wird gerade aufgebaut
