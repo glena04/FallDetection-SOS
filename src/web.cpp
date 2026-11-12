@@ -1,5 +1,5 @@
 // web.cpp – Weboberfläche: Seiten, Formulare, Schutz (Host/Origin, Limits)
-// Fall Detection & SOS Device – Firmware v7.7.3 (PlatformIO)
+// Fall Detection & SOS Device – Firmware v7.8.2 (PlatformIO)
 #include "web.h"
 #include <WiFi.h>
 #include <AsyncTCP.h>

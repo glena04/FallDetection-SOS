@@ -7,7 +7,7 @@ A low-cost **personal emergency device** that detects falls automatically, has a
 ![Build](https://img.shields.io/badge/build-PlatformIO-F5822A)
 ![Modem](https://img.shields.io/badge/modem-Ai--Thinker%20A9G-orange)
 ![Status](https://img.shields.io/badge/status-prototype-yellow)
-![Version](https://img.shields.io/badge/firmware-v7.7-green)
+![Version](https://img.shields.io/badge/firmware-v7.8.2-green)
 
 > ⚠️ **Prototype – not a certified medical or safety device.** Do not rely on it as the only protection for a person at risk. See [Safety, privacy & legal notice](#%EF%B8%8F-safety-privacy--legal-notice).
 
@@ -246,6 +246,8 @@ sequenceDiagram
 | **GPIO 4** | SOS button → GND | `SOS_BUTTON_PIN`, internal pull-up, active LOW, 100 nF to GND |
 | **GPIO 14** | Buzzer (via NPN transistor) | `BUZZER_PIN`, HIGH = beep |
 | **GPIO 5** | MPU6050 **INT** | `MPU_INT_PIN`, wakes the ESP32 on movement (power saving) |
+| **GPIO 7** | 1 kΩ → NPN transistor (e.g. 2N2222/BC547), collector on the A9G **power button** (non-GND side), emitter to GND | `A9G_PWRKEY_PIN`, restarts the A9G automatically if it stops responding |
+| **GPIO 6** | A9G **IO25** (via voltage divider, 2.8 V) | `A9G_WAKE_PIN`, optional, only for `A9G_SLEEP_MODE 2` |
 | **GPIO 17** (TX2) | A9G **U_RXD** | `TXD2`, **through voltage divider** (3.3 V → ~2.8 V) |
 | **GPIO 16** (RX2) | A9G **U_TXD** | `RXD2`, direct |
 | 3V3 | MPU6050 VCC | |
@@ -453,7 +455,8 @@ const char* const AP_PASS = "sos12345";
 |---|---|---|
 | `POWER_SAVE_ENABLED` | `true` | `false` = everything always on (e.g. on USB for debugging) |
 | `MPU_INT_PIN` | 5 | MPU6050 INT pin (`-1` = not connected → no ESP32 sleep) |
-| `A9G_SLEEP_ENABLED` | `true` | A9G sleep mode (`AT+SLEEP=1`); set `false` if the A9G stops responding |
+| `A9G_SLEEP_MODE` | `0` | A9G sleep: `0` off (recommended), `1` `AT+SLEEP=1` (did not wake up on the test module), `2` pin-controlled via IO25 (test first with the console) |
+| `A9G_PWRKEY_PIN` | 7 | ESP32 "presses" the A9G power button after 3 failed checks (max. every 2 min) |
 | `IDLE_SLEEP_MS` | 10 min | Stay awake after boot / web use / serial console, then sleep |
 | `WIFI_SETUP_WINDOW_MS` | 10 min | Wi-Fi after boot and after SMS `SETUP` |
 | `ALARM_LOCATION_WAIT_MS` | 20 s | Max. wait for GPS before the alarm SMS (the fall countdown counts) |
@@ -735,6 +738,8 @@ fall-detection-sos/
 | **v7.6** | SMS commands `STANDORT` and `STATUS` from saved numbers |
 | **v7.6.1–7.6.6** | Robust SMS reading (CPMS, +CMT/+CMTI, delete by index), duplicate suppression, reset reason, modem offline detection |
 | **v7.7** | **Power saving:** ESP32 light sleep, A9G sleep, GPS/Wi-Fi only on demand, wake on SOS/movement/modem, SMS `SETUP` |
+| **v7.7.1–7.7.3** | Fixes: network stack before web server, status polling no longer keeps the device awake, SIM cleanup, A9G sleep off by default |
+| **v7.8–7.8.2** | Automatic A9G restart via power button (NPN transistor), no restart while the modem is busy, AGPS/cell location off (A9G services not responding), selectable A9G sleep mode incl. pin control, console commands `WAKE HIGH/LOW`, `PWRKEY` |
 | Product planning | Configuration by SMS / web portal, hosting (VPS + MQTT), cost estimate for a custom PCB |
 
 ---

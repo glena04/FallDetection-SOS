@@ -1,5 +1,5 @@
 // modem.cpp – A9G: AT-Befehle, Modem-Meldungen (URC), SMS-Versand mit Wiederholung
-// Fall Detection & SOS Device – Firmware v7.7.3 (PlatformIO)
+// Fall Detection & SOS Device – Firmware v7.8.2 (PlatformIO)
 #include "modem.h"
 #include "sms_queue.h"
 #include "power.h"
@@ -90,7 +90,7 @@ static uint32_t lastModemTx = 0;
 static bool     modemSleepSet = false;
 
 static void modemNudge() {
-  if (POWER_SAVE_ENABLED && A9G_SLEEP_ENABLED && millis() - lastModemTx > 2000) {
+  if (POWER_SAVE_ENABLED && A9G_SLEEP_MODE == 1 && millis() - lastModemTx > 2000) {
     // v7.7.3: mehrmals "AT" senden, bis das A9G antwortet (max. ca. 1,5 s)
     for (int i = 0; i < 6; i++) {
       while (Serial2.available()) Serial2.read();
@@ -108,11 +108,65 @@ static void modemNudge() {
   lastModemTx = millis();
 }
 
+// ---- v7.8: Pins für Schlaf (IO25) und Power-Taste ----
+static void wakePinSet(bool awake) {
+  if (A9G_WAKE_PIN < 0) return;
+  bool high = awake ? (A9G_WAKE_ACTIVE_HIGH != 0) : (A9G_WAKE_ACTIVE_HIGH == 0);
+  digitalWrite(A9G_WAKE_PIN, high ? HIGH : LOW);
+}
+
+void modemPinsBegin() {
+  if (A9G_WAKE_PIN >= 0)   { pinMode(A9G_WAKE_PIN, OUTPUT); wakePinSet(true); }   // beim Start wach
+  if (A9G_PWRKEY_PIN >= 0) { pinMode(A9G_PWRKEY_PIN, OUTPUT);
+                             digitalWrite(A9G_PWRKEY_PIN, A9G_PWRKEY_ACTIVE_HIGH ? LOW : HIGH); }
+}
+
+void a9gSleepPin() { if (A9G_SLEEP_MODE == 2) wakePinSet(false); }
+
+void a9gWakePin() {
+  if (A9G_SLEEP_MODE != 2) return;
+  wakePinSet(true);
+  vTaskDelay(pdMS_TO_TICKS(100));          // A9G braucht etwas Zeit
+}
+
+void a9gPressPowerKey(uint32_t ms) {
+  if (A9G_PWRKEY_PIN < 0) return;
+  digitalWrite(A9G_PWRKEY_PIN, A9G_PWRKEY_ACTIVE_HIGH ? HIGH : LOW);
+  vTaskDelay(pdMS_TO_TICKS(ms));
+  digitalWrite(A9G_PWRKEY_PIN, A9G_PWRKEY_ACTIVE_HIGH ? LOW : HIGH);
+}
+
+void consoleSetWakePin(bool high) {
+  if (A9G_WAKE_PIN < 0) { Serial.println("A9G_WAKE_PIN ist nicht gesetzt (config.h)."); return; }
+  digitalWrite(A9G_WAKE_PIN, high ? HIGH : LOW);
+  Serial.printf("Test: A9G-Weckpin (GPIO %d) = %s. Jetzt nach 10 s \"AT\" senden.\n",
+                A9G_WAKE_PIN, high ? "HIGH" : "LOW");
+}
+
 void modemEnableSleep() {
-  if (!POWER_SAVE_ENABLED || !A9G_SLEEP_ENABLED || modemSleepSet) return;
+  if (!POWER_SAVE_ENABLED || A9G_SLEEP_MODE != 1 || modemSleepSet) return;
   String r = sendATCommand("AT+SLEEP=1", 1000);
   Serial.println("A9G-Schlafmodus (AT+SLEEP=1): " + r);
   modemSleepSet = true;     // nur einmal pro Einrichtung versuchen
+}
+
+// v7.8.2: Lebenszeichen prüfen. 1 = "OK", 0 = keine Antwort, -1 = UART gerade belegt
+// (ein beschäftigtes Modem zählt NICHT als Ausfall -> kein falscher Power-Key-Neustart)
+int modemPing(uint32_t timeoutMs) {
+  if (xSemaphoreTake(serial2Mutex, pdMS_TO_TICKS(200)) != pdTRUE) return -1;
+  drainModem();
+  modemNudge();
+  Serial2.println("AT");
+  String r;
+  uint32_t t0 = millis();
+  while (millis() - t0 < timeoutMs) {
+    while (Serial2.available()) r += (char)Serial2.read();
+    if (r.indexOf("OK") != -1) break;
+    vTaskDelay(pdMS_TO_TICKS(10));
+  }
+  feedModem(r + "\n");
+  xSemaphoreGive(serial2Mutex);
+  return r.indexOf("OK") != -1 ? 1 : 0;
 }
 
 String sendATCommand(String command, unsigned long timeout) {
@@ -159,7 +213,14 @@ void modemInit() {
   smsReceived = true;                                  // v7.6: ungelesene SMS beim Start prüfen
   modemSleepSet = false;                               // v7.7: Schlafmodus nach Einrichtung neu setzen
   // v7.7.3: Schlafmodus abschalten, falls er (z. B. von v7.7) noch aktiv ist
-  if (!A9G_SLEEP_ENABLED) sendATCommand("AT+SLEEP=0", 1000);
+  if (A9G_SLEEP_MODE != 1) sendATCommand("AT+SLEEP=0", 1000);
+  if (A9G_SLEEP_MODE == 2) {
+    // v7.8: Schlaf per Pin (IO25) erlauben
+    String r = sendATCommand("AT+CSCLK=1", 2000);
+    Serial.println("A9G Pin-Schlafmodus (AT+CSCLK=1): " + r);
+    if (r.indexOf("OK") == -1)
+      Serial.println("WARNUNG: A9G kennt AT+CSCLK nicht - Pin-Schlafmodus wirkt nicht. A9G_SLEEP_MODE 0 verwenden.");
+  }
   // v7.7: GPS wird nicht mehr hier, sondern in location.cpp nach Bedarf geschaltet
 }
 

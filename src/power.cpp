@@ -1,5 +1,5 @@
 // power.cpp – Energiesparen
-// Fall Detection & SOS Device – Firmware v7.7.3 (PlatformIO)
+// Fall Detection & SOS Device – Firmware v7.8.2 (PlatformIO)
 //
 // Ruhezustand (nach IDLE_SLEEP_MS ohne Bedienung, wenn nichts zu tun ist):
 //   - ESP32: Light Sleep (RAM bleibt erhalten, Aufwachen in ca. 1 ms)
@@ -53,7 +53,9 @@ static void sleepOnce() {
   modemEnableSleep();                       // A9G-Schlafmodus (einmal pro Einrichtung)
   if (systemBusy()) return;
 
-  bool useModemWake = modemIsOnline();      // ausgeschaltetes A9G -> RX-Pin nicht als Weckquelle
+  // ausgeschaltetes A9G -> RX-Pin nicht als Weckquelle
+  // v7.8.1: im Schlafmodus 1/2 ist die UART des A9G evtl. inaktiv -> RX nur im Modus 0 nutzen
+  bool useModemWake = modemIsOnline() && A9G_SLEEP_MODE == 0;
 
   // v7.7: nie mitten in einer I2C- oder Modem-Übertragung einschlafen
   if (!sensorBusLock(50)) return;
@@ -61,6 +63,7 @@ static void sleepOnce() {
 
   Serial.flush();
   Serial2.flush();
+  a9gSleepPin();                            // v7.8: Schlafmodus 2 – A9G per Pin schlafen
 
   gpio_wakeup_enable((gpio_num_t)SOS_BUTTON_PIN, GPIO_INTR_LOW_LEVEL);
   gpio_wakeup_enable((gpio_num_t)MPU_INT_PIN,    GPIO_INTR_HIGH_LEVEL);
@@ -75,6 +78,7 @@ static void sleepOnce() {
   bool sos    = digitalRead(SOS_BUTTON_PIN) == LOW;
   bool motion = digitalRead(MPU_INT_PIN) == HIGH;
   esp_sleep_wakeup_cause_t cause = esp_sleep_get_wakeup_cause();
+  a9gWakePin();                             // v7.8: A9G zuerst wecken, bevor andere Tasks senden
   xSemaphoreGive(serial2Mutex);
   sensorBusUnlock();
 

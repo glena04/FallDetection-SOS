@@ -1,5 +1,5 @@
 // location.cpp – GPS, AGPS, WLAN-/Funkzellen-Ortung, GPS-Nachmeldung
-// Fall Detection & SOS Device – Firmware v7.7.3 (PlatformIO)
+// Fall Detection & SOS Device – Firmware v7.8.2 (PlatformIO)
 #include "location.h"
 #include <WiFi.h>
 #include <HTTPClient.h>
@@ -417,11 +417,15 @@ void gpsTask(void* pv) {
     if (active || !modemOnline || millis() - lastModemCheck > MODEM_CHECK_IDLE_MS) {
       lastModemCheck = millis();
       bool responded = false;
+      bool uartBusy  = false;
       for (int i = 0; i < 3 && !responded; i++) {
-        responded = sendATCommand("AT", 1000).indexOf("OK") != -1;
+        int p = modemPing(1000);
+        if (p < 0) { uartBusy = true; break; }     // v7.8.2: Modem arbeitet (SMS/GPRS) -> kein Fehler
+        responded = (p == 1);
         if (!responded) vTaskDelay(pdMS_TO_TICKS(500));
       }
-      if (!responded) {
+      if (uartBusy) responded = modemOnline;        // Zustand beibehalten, Runde nicht zählen
+      if (!responded && !uartBusy) {
         // v7.7.3: A9G evtl. noch im Schlafmodus (v7.7) -> mehrfach wecken und Schlafmodus aus
         for (int i = 0; i < 5 && !responded; i++) {
           String r = sendATCommand("AT+SLEEP=0", 400);
@@ -429,7 +433,18 @@ void gpsTask(void* pv) {
         }
         if (responded) Serial.println("A9G aus dem Schlafmodus geholt (AT+SLEEP=0).");
       }
-      failRounds = responded ? 0 : failRounds + 1;
+      if (!uartBusy) failRounds = responded ? 0 : failRounds + 1;
+
+      // v7.8: A9G antwortet dauerhaft nicht -> Power-Taste per ESP32 "drücken"
+      static uint32_t lastPwrKey = 0;
+      if (!responded && !uartBusy && failRounds >= 3 && A9G_PWRKEY_PIN >= 0 &&
+          (lastPwrKey == 0 || millis() - lastPwrKey > A9G_PWRKEY_RETRY_MS)) {
+        lastPwrKey = millis();
+        Serial.println("A9G reagiert nicht - druecke Power-Taste ...");
+        powerActivity(90000);                      // v7.8.1: wach bleiben, bis das A9G wieder da ist
+        a9gPressPowerKey(A9G_PWRKEY_PRESS_MS);
+        vTaskDelay(pdMS_TO_TICKS(15000));          // v7.8.1: Startzeit des A9G (mehr Reserve)
+      }
       if (!responded && modemOnline && failRounds < 3) {
         Serial.printf("A9G antwortet nicht (Runde %d/3) - warte ab.\n", failRounds);
       }

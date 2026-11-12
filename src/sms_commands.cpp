@@ -1,5 +1,5 @@
 // sms_commands.cpp – Befehle per SMS von gespeicherten Notrufnummern
-// Fall Detection & SOS Device – Firmware v7.7.3 (PlatformIO)
+// Fall Detection & SOS Device – Firmware v7.8.2 (PlatformIO)
 //
 // Befehle (Groß-/Kleinschreibung egal, Satzzeichen werden ignoriert):
 //   STANDORT / WO / LOC / LOCATION / POSITION  -> aktueller Standort

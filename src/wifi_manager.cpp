@@ -1,5 +1,5 @@
 // wifi_manager.cpp – WLAN-Verbindung, Setup-AP, automatische Neuverbindung
-// Fall Detection & SOS Device – Firmware v7.7.3 (PlatformIO)
+// Fall Detection & SOS Device – Firmware v7.8.2 (PlatformIO)
 //
 // v7.7: WLAN läuft nicht mehr blockierend. Mit Energiesparen ist es nur an:
 //   - 10 min nach dem Start und nach der SMS "SETUP" (mit Setup-AP als Ersatz)

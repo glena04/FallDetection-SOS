@@ -1,5 +1,5 @@
 // config.h – alle Einstellungen (Pins, Schwellen, Zeiten)
-// Fall Detection & SOS Device – Firmware v7.7.3 (PlatformIO)
+// Fall Detection & SOS Device – Firmware v7.8.2 (PlatformIO)
 #pragma once
 #include <Arduino.h>
 
@@ -36,7 +36,7 @@ const uint32_t SOS_LOCKOUT_MS = 60000;  // nach einem Taster-SOS 60 s Sperre
 #define I2C_SCL 9
 
 // Sturzerkennung
-const float FALL_THRESHOLD = 20.0; // ca. 2g - Aufprall-Schwelle ohne Freifall
+const float FALL_THRESHOLD = 25.0; // ca. 2.5g - Aufprall-Schwelle ohne Freifall
 
 // NEU: Abbruchzeit nach erkanntem Sturz (bevor die SMS gesendet wird)
 const uint32_t CANCEL_WINDOW_MS = 15000;   // 15 Sekunden
@@ -49,9 +49,9 @@ const unsigned long GPS_INTERVAL = 30000;  // 30 Sekunden
 
 // v7.3: AGPS + Ersatz-Standort, solange kein GPS-Fix da ist
 const char* const GPRS_APN          = "web.vodafone.de";  // APN der SIM-Karte (z. B. "internet", "web.vodafone.de", "online.telia.se")
-const bool  USE_AGPS          = true;        // AGPS: schnellerer GPS-Fix (braucht mobile Daten)
+const bool  USE_AGPS          = false;       // AGPS (v7.8.2: aus – A9G-AGPS-Dienst antwortet nicht, CME ERROR 50)
 const bool  USE_WIFI_LOCATION = true;        // 1. Ersatz: WLAN-Ortung (braucht WLAN mit Internet)
-const bool  USE_CELL_LOCATION = true;        // 2. Ersatz: Funkzellen-Ortung über A9G (braucht mobile Daten)
+const bool  USE_CELL_LOCATION = false;       // Funkzellen-Ortung (v7.8.2: aus – A9G liefert keine Daten)
 // beaconDB: kostenlos, ohne Key, aber experimentell. Alternative: Google Geolocation API
 // "https://www.googleapis.com/geolocation/v1/geolocate?key=DEIN_KEY"
 const char* const GEO_API_URL       = "https://api.beacondb.net/v1/geolocate";
@@ -62,7 +62,7 @@ const uint32_t FALLBACK_MAX_AGE_MS  = 900000;   // Ersatz-Standort höchstens 15
 const uint32_t FOLLOWUP_MAX_MS      = 7200000;  // GPS-Nachmeldung bis 2 h nach dem Alarm
 
 // v7.2: SMS bleiben in der Warteschlange, bis das A9G wieder bereit ist
-const uint32_t SMS_RETRY_INTERVAL_MS = 15000;    // alle 15 s neu versuchen
+const uint32_t SMS_RETRY_INTERVAL_MS = 10000;    // alle 15 s neu versuchen
 const uint32_t SMS_MAX_RETRY_MS      = 3600000;  // max. 1 Stunde lang versuchen
 const uint32_t SMS_SEND_TIMEOUT_MS   = 15000;    // max. Wartezeit auf +CMGS
 // v7.4: Ausfallsicherheit
@@ -74,12 +74,12 @@ const uint32_t WDT_TIMEOUT_S            = 30;       // Watchdog: Neustart, wenn 
 const size_t   STATUS_MAX_LEN           = 1200;     // max. Länge des Statustexts
 const int      SMS_SLOTS                = 8;        // gespeicherte SMS (= Größe der Warteschlange)
 #define MPU_ADDR 0x68
-
+ 
 // v7.4 Stufe 2: Schutz der Webseite (ohne Login)
 const int      WEB_SOS_MAX        = 3;        // Web-SOS: max. 3 ...
-const uint32_t WEB_SOS_WINDOW_MS  = 300000;   // ... pro 10 Minuten
+const uint32_t WEB_SOS_WINDOW_MS  = 600000;   // ... pro 10 Minuten
 const int      WEB_SMS_MAX        = 5;        // manuelle SMS: max. 5 ...
-const uint32_t WEB_SMS_WINDOW_MS  = 300000;   // ... pro 10 Minuten
+const uint32_t WEB_SMS_WINDOW_MS  = 600000;   // ... pro 10 Minuten
 const uint32_t SMS_POLL_INTERVAL_MS = 60000;   // v7.6.2: SIM jede Minute auf neue SMS prüfen
 const uint32_t SMS_CMD_DUPLICATE_MS = 120000;  // v7.6.6: gleiche Anfrage innerhalb 2 min nur einmal beantworten
 const int      SMS_CMD_MAX_PER_HOUR = 10;     // v7.6: max. Antworten auf SMS-Befehle pro Stunde
@@ -90,10 +90,24 @@ const size_t   MANUAL_SMS_MAX_LEN = 80;       // Länge der eigenen Nachricht (S
 // Wecken: SOS-Taste, Bewegung (MPU6050-INT), Modem-Meldung (Anruf/SMS), Timer.
 const bool     POWER_SAVE_ENABLED       = true;     // false = alles dauerhaft an (z. B. am USB)
 #define MPU_INT_PIN 5                                // MPU6050 INT -> ESP32 GPIO 5 (-1 = nicht verbunden: kein ESP-Schlaf)
-const bool     A9G_SLEEP_ENABLED        = false;    // A9G-Schlafmodus (AT+SLEEP=1) – v7.7.3: aus, A9G war danach nicht mehr erreichbar
+// v7.8: A9G-Schlafmodus
+//   0 = aus (empfohlen, zuverlässig)
+//   1 = AT+SLEEP=1, Wecken per UART (bei deinem Modul: wacht nicht wieder auf!)
+//   2 = per Pin: AT+CSCLK=1, ESP32 schaltet A9G-IO25 (A9G_WAKE_PIN) – vorher mit
+//       der Konsole testen ("WAKE HIGH" / "WAKE LOW", dann "AT")
+#define A9G_SLEEP_MODE 0
+const bool     A9G_SLEEP_ENABLED        = (A9G_SLEEP_MODE != 0);
+#define A9G_WAKE_PIN           6   // ESP32-GPIO -> A9G IO25 (über Spannungsteiler 2,8 V), -1 = nicht verbunden
+#define A9G_WAKE_ACTIVE_HIGH   1   // 1 = HIGH weckt, 0 = LOW weckt (mit Konsolen-Test ermitteln)
+// v7.8: Power-Taste des A9G per ESP32 "drücken" (Optokoppler oder Transistor über der Taste)
+//   Startet das A9G automatisch, wenn es nicht mehr antwortet (z. B. nach Schlaf oder Akku-Einbruch)
+#define A9G_PWRKEY_PIN         7   // ESP32-GPIO -> 1 kΩ -> NPN-Basis, Kollektor an Taste (Seite ≠ GND), -1 = nicht verbunden
+#define A9G_PWRKEY_ACTIVE_HIGH 1   // 1 = HIGH "drückt" die Taste (NPN-Transistor)
+const uint32_t A9G_PWRKEY_PRESS_MS      = 2500;     // so lange "drücken"
+const uint32_t A9G_PWRKEY_RETRY_MS      = 120000;   // höchstens alle 2 min
 const uint32_t IDLE_SLEEP_MS            = 600000;   // 10 min nach Start/Bedienung wach, dann Schlaf
 const uint32_t WIFI_SETUP_WINDOW_MS     = 600000;   // WLAN nach Start / SMS "SETUP" 10 min an
-const uint32_t ALARM_LOCATION_WAIT_MS   = 20000;    // Alarm: max. 20 s auf GPS warten (inkl. Countdown)
+const uint32_t ALARM_LOCATION_WAIT_MS   = 8000;    // Alarm: max. 20 s auf GPS warten (inkl. Countdown)
 const uint32_t ALARM_GPS_HOLD_MS        = 120000;   // GPS nach Alarm 2 min an (GPS-Nachmeldung)
 const uint32_t ALARM_WIFI_HOLD_MS       = 30000;    // WLAN für die Ortung 30 s an
 const uint32_t POST_SMS_AWAKE_MS        = 30000;    // nach gesendeter SMS noch 30 s wach (Rückruf)

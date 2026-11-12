@@ -1,5 +1,5 @@
 // calls.cpp – Anrufe von Notrufnummern automatisch annehmen (Mithören)
-// Fall Detection & SOS Device – Firmware v7.7.3 (PlatformIO)
+// Fall Detection & SOS Device – Firmware v7.8.2 (PlatformIO)
 #include "calls.h"
 #include "globals.h"
 #include "modem.h"

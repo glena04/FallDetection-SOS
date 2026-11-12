@@ -1,5 +1,5 @@
 // main.cpp – Start: Hardware, Tasks, WLAN, Webserver
-// Fall Detection & SOS Device – Firmware v7.7.3 (PlatformIO)
+// Fall Detection & SOS Device – Firmware v7.8.2 (PlatformIO)
 #include <Arduino.h>
 #include <Wire.h>
 #include <esp_task_wdt.h>
@@ -51,7 +51,7 @@ void setup() {
   Serial.println();
   String reason = resetReasonText(esp_reset_reason());
   Serial.println("Letzter Neustart: " + reason);
-  Serial.println("ESP32 startet... (Firmware v7.7.3)");
+  Serial.println("ESP32 startet... (Firmware v7.8.2)");
 
   // Synchronisation
   stateMutex   = xSemaphoreCreateMutex();
@@ -70,6 +70,9 @@ void setup() {
     pinMode(BUZZER_PIN, OUTPUT);
     digitalWrite(BUZZER_PIN, LOW);
   }
+
+  // v7.8: A9G-Weckpin und Power-Taste
+  modemPinsBegin();
 
   // v7.7: MPU6050-INT (Wecken bei Bewegung)
   if (MPU_INT_PIN >= 0) pinMode(MPU_INT_PIN, INPUT);
@@ -115,11 +118,17 @@ static void serialAtConsole() {
       line.trim();
       if (line.length()) {
         powerActivity(IDLE_SLEEP_MS);        // v7.7: Diagnose am PC -> wach bleiben
-        if (line.length() >= 2 && line.substring(0, 2).equalsIgnoreCase("AT")) {
+        if (line.equalsIgnoreCase("WAKE HIGH") || line.equalsIgnoreCase("WAKE LOW")) {
+          consoleSetWakePin(line.endsWith("HIGH") || line.endsWith("high"));   // v7.8: Pin-Test
+        } else if (line.equalsIgnoreCase("PWRKEY")) {
+          Serial.println("Test: druecke A9G-Power-Taste ...");
+          a9gPressPowerKey(A9G_PWRKEY_PRESS_MS);
+          Serial.println("fertig.");
+        } else if (line.length() >= 2 && line.substring(0, 2).equalsIgnoreCase("AT")) {
           Serial.println(">> " + line);
           Serial.println(sendATCommand(line, 3000));
         } else {
-          Serial.println("Nur AT-Befehle, z. B. AT+CREG? oder AT+CSQ");
+          Serial.println("Befehle: AT..., WAKE HIGH, WAKE LOW, PWRKEY");
         }
       }
       line = "";

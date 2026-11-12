@@ -1,5 +1,5 @@
 // fall_detection.h – Sturzerkennung mit MPU6050
-// Fall Detection & SOS Device – Firmware v7.7.3 (PlatformIO)
+// Fall Detection & SOS Device – Firmware v7.8.2 (PlatformIO)
 #pragma once
 #include <Arduino.h>
 

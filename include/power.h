@@ -1,5 +1,5 @@
 // power.h – Energiesparen: Light Sleep des ESP32, Schlafmodus des A9G
-// Fall Detection & SOS Device – Firmware v7.7.3 (PlatformIO)
+// Fall Detection & SOS Device – Firmware v7.8.2 (PlatformIO)
 #pragma once
 #include <Arduino.h>
 
